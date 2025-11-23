@@ -1,0 +1,75 @@
+import { ExpressionEvaluator, StateManager } from "./pp-reactive-v1.js";
+import { DOMBindingManager } from "./dom-binding-manager.js";
+interface ComponentProps {
+    [key: string]: unknown;
+}
+interface PropBinding {
+    name: string;
+    expression: string;
+    component: string;
+    subscriptionIds: string[];
+}
+export declare class ComponentManager {
+    componentStack: string[];
+    elementProps: WeakMap<Element, Map<string, PropBinding>>;
+    private contextCache;
+    private contextIndex;
+    private contextInvalidated;
+    private stateManager;
+    private processedScripts;
+    private componentFunctions;
+    private expressionEvaluator?;
+    private domBindingManager?;
+    private templateRenderer?;
+    private updateTimeouts?;
+    private updateBatcher;
+    private propDependencyCache;
+    constructor(stateManager: StateManager);
+    getPropDependencies(propName: string, component: string): string[];
+    buildRestrictedComponentContext(component: string, allowParentAccess?: boolean): Record<string, any>;
+    getComponentPropDependencies(element: Element, component: string): string[];
+    setDOMBindingManager(domBindingManager: DOMBindingManager): void;
+    hasStoredProps(element: Element): boolean;
+    setExpressionEvaluator(expressionEvaluator: ExpressionEvaluator): void;
+    extractProps(element: Element, parentComponent: string): Map<string, PropBinding>;
+    private mightReferenceSelfProps;
+    setupProps(element: Element, parentComponent: string): void;
+    private setupPropBinding;
+    private refreshComponentBindings;
+    evaluateProps(element: Element): ComponentProps;
+    cleanupProps(element: Element): void;
+    buildComponentContextWithProps(component: string, element?: Element): Record<string, any>;
+    buildRestrictedComponentContextWithProps(component: string, element: Element): Record<string, any>;
+    evaluatePropsWithContext(element: Element, targetComponent: string, contextElement?: Element): ComponentProps;
+    private findElementWithProps;
+    pushComponent(component: string): void;
+    popComponent(): string | undefined;
+    getCurrentComponent(): string;
+    buildComponentContext(component: string): Record<string, any>;
+    private computeComponentContext;
+    private invalidateContextCache;
+    invalidateComponent(component: string): void;
+    executePhpScripts(element: Element): void;
+    private getParentComponent;
+    private getRelevantScripts;
+    private executeScript;
+    private getLoopContextForElement;
+    private extractLoopContextValues;
+    private shouldUseRestrictedContext;
+    private findDirectParentComponent;
+    private buildIsolatedComponentContext;
+    private findComponentElementForScript;
+    private executeScriptFunctions;
+    private isValidJavaScriptIdentifier;
+    private extractVariableDeclarations;
+    private modifyScriptForReactiveProps;
+    private replacePropOutsideStrings;
+    private findStringEnd;
+    private findTemplateEnd;
+    private matchesPropName;
+    private extractFunctionNames;
+    private storeFunctionForComponent;
+    getComponentFunctions(component: string): Map<string, Function> | undefined;
+    destroy(): void;
+}
+export {};

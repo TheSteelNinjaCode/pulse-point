@@ -1,0 +1,37 @@
+import { ComponentManager } from "./component-manager.js";
+import { LoopManager } from "./loop-manager.js";
+import { ExpressionEvaluator, StateManager } from "./pp-reactive-v1.js";
+export declare class EventDelegationManager {
+    private static eventCache;
+    private delegatedEvents;
+    private elementHandlers;
+    private handlerCache;
+    private componentManager?;
+    private expressionEvaluator?;
+    private loopManager?;
+    private setupEvents;
+    static isEventAttribute(attrName: string): boolean;
+    private static getAllAvailableEvents;
+    setupEventDelegation(): void;
+    private getEventOptions;
+    isEventSupported(eventType: string): boolean;
+    getAllSupportedEvents(): string[];
+    getDelegatedEvents(): string[];
+    setDependencies(componentManager: ComponentManager, expressionEvaluator: ExpressionEvaluator, stateManager: StateManager, loopManager?: LoopManager): void;
+    private createDelegatedListener;
+    registerEventHandler(element: Element, eventType: string, code: string, component: string): void;
+    private ensureEventSetup;
+    private findHandler;
+    private compileHandler;
+    private executeHandler;
+    private collectAncestorProps;
+    private resolveEffectiveComponent;
+    private locateComponentElement;
+    private buildContextStrict;
+    private buildContextNonStrict;
+    private mergeLoopContext;
+    private ensureCompiled;
+    private attachDirectListener;
+    removeEventHandler(element: Element, eventType: string): void;
+    cleanup(): void;
+}

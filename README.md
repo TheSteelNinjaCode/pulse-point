@@ -43,13 +43,13 @@ The fastest way to try PulsePoint is via the official CDN. Create an `index.html
 
       // 3. Handle Hydration (Prevents FOUC)
       document.addEventListener("pp:hydrated", () => {
-        document.body.style.display = "block";
+        document.body.style.opacity = "1";
       });
     </script>
   </head>
 
   <!-- Hidden by default until hydrated -->
-  <body style="display: none;">
+  <body style="opacity: 0;">
     <h1>Hello World</h1>
     <p>PulsePoint is ready.</p>
   </body>

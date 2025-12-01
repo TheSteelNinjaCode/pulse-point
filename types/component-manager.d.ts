@@ -24,7 +24,11 @@ export declare class ComponentManager {
     private updateTimeouts?;
     private updateBatcher;
     private propDependencyCache;
+    private componentRegistry;
     constructor(stateManager: StateManager);
+    registerComponent(componentName: string): void;
+    getRegisteredComponents(): Set<string>;
+    clearComponentRegistry(): void;
     getPropDependencies(propName: string, component: string): string[];
     buildRestrictedComponentContext(component: string, allowParentAccess?: boolean): Record<string, any>;
     getComponentPropDependencies(element: Element, component: string): string[];

@@ -25,6 +25,7 @@ export interface Subscription {
     }) => void;
     element?: Element;
     component?: string;
+    cleanup?: () => void;
 }
 export interface ParsedMustache {
     type: "static" | "expression";
@@ -316,6 +317,7 @@ export declare class PP {
     private portalHydrationResolvers;
     private lifecycleManager;
     private pendingEffects;
+    private onceEffectCleanups;
     constructor();
     initialize(): Promise<void>;
     private processAllLoops;
@@ -347,7 +349,6 @@ export declare class PP {
     private extractDependencyNames;
     private resolveDependencies;
     private createComponentScopedGlobals;
-    protected deleteAllComponentObjects(): void;
     static resetInstance(): void;
     destroy(): void;
 }

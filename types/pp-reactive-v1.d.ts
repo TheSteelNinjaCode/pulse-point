@@ -93,6 +93,15 @@ interface LifecycleHooks {
     beforePortals?: () => void;
     afterPortals?: () => void;
 }
+export declare class ScopeChainRegistry {
+    private static instance;
+    private elementScopeChains;
+    static getInstance(): ScopeChainRegistry;
+    register(element: Element, scopes: string[]): void;
+    get(element: Element): string[] | undefined;
+    findClosestRegistered(element: Element): string[] | undefined;
+    clear(): void;
+}
 export declare class ScopeResolver {
     private static scopeCache;
     private static commentCache;
@@ -101,6 +110,7 @@ export declare class ScopeResolver {
     private static readonly CLEANUP_INTERVAL;
     private static readonly MAX_TRACKED_ELEMENTS;
     private static lastCleanup;
+    static findAllParentScopes(element: Element | Text): string[];
     static findScope(element: Element | Text): string | null;
     private static findScopeUncached;
     private static findScopeInSiblings;

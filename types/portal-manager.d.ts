@@ -25,6 +25,7 @@ export declare class PortalManager {
     constructor();
     setDependencies(componentManager: ComponentManager, domBindingManager: DOMBindingManager, stateManager: StateManager, pphpInstance?: PP): void;
     createPortal(content: HTMLElement | DocumentFragment | string, container: Element | string, options?: PortalOptions): string;
+    private registerPortalScopeChain;
     private renderPortalWithHydration;
     private renderPortal;
     removePortal(portalId: string): boolean;

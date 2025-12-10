@@ -25,6 +25,7 @@ export declare class ComponentManager {
     private updateBatcher;
     private propDependencyCache;
     private componentRegistry;
+    private astProcessor;
     constructor(stateManager: StateManager);
     registerComponent(componentName: string): void;
     getRegisteredComponents(): Set<string>;
@@ -67,10 +68,6 @@ export declare class ComponentManager {
     private isValidJavaScriptIdentifier;
     private extractVariableDeclarations;
     private modifyScriptForReactiveProps;
-    private replacePropOutsideStrings;
-    private findStringEnd;
-    private findTemplateEnd;
-    private matchesPropName;
     private extractFunctionNames;
     private storeFunctionForComponent;
     getComponentFunctions(component: string): Map<string, Function> | undefined;

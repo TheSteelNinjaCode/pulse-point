@@ -12,10 +12,33 @@ interface StateDeclaration {
     line: number;
     column: number;
 }
+interface PropTransformOptions {
+    propNames: string[];
+    skipEffectDeps?: boolean;
+    skipFunctionParams?: boolean;
+    wrapperFunction?: string;
+}
+interface TransformResult {
+    code: string;
+    transformations: number;
+    skipped: {
+        locals: number;
+        effectDeps: number;
+        properties: number;
+    };
+}
 export declare class ASTProcessor {
     private static instance;
     private stateVariables;
     private static readonly FUNCTIONS_NEEDING_VALUE_TRANSFORM;
+    transformPropsToGetters(code: string, options: PropTransformOptions): TransformResult;
+    private identifySpecialContexts;
+    private shouldSkipPropTransform;
+    private isInEffectDependencyArray;
+    private isLocalVariable;
+    private isFunctionParameter;
+    private findClosestScope;
+    private extractPatternIdentifiers;
     extractIterableName(expression: string): string;
     private extractMemberExpressionPath;
     private extractRootIdentifier;
@@ -33,6 +56,8 @@ export declare class ASTProcessor {
     private transformStateDeclarationsOnly;
     private transformUnsupportedStateUsages;
     private trackFunctionParameters;
+    private trackFunctionParametersForProps;
+    private extractPatternIdentifiersForProps;
     private extractIdentifiersFromPattern;
     private transformShorthandProperties;
     private transformLogicalExpression;

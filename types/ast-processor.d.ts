@@ -69,6 +69,8 @@ export declare class ASTProcessor {
     private transformVariableDeclarator;
     private transformAssignmentExpression;
     private transformGeneralCallExpression;
+    private isLocalInAncestors;
+    private patternHasIdentifier;
     private static isFunctionNeedingValueTransform;
     private transformExpressionNode;
     private isPPCall;

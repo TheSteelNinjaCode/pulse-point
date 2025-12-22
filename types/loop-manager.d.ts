@@ -47,6 +47,7 @@ export declare class LoopManager {
     private deferredUpdates;
     private processingTemplates;
     private astProcessor;
+    private itemCleanupCallbacks;
     constructor(stateManager: StateManager, expressionEvaluator: ExpressionEvaluator);
     setHydrating(hydrating: boolean): void;
     waitForAllLoopsProcessed(): Promise<void>;

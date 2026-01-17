@@ -73,6 +73,8 @@ export declare class LoopManager {
     private getAllParentLoopContexts;
     private createItemContext;
     private findAllParentLoopContexts;
+    private updateDynamicTag;
+    private processDynamicTags;
     private createLoopItem;
     private preCloneSanitizeTemplate;
     private processRefsInLoopItem;

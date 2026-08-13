@@ -1,9 +1,18 @@
-# PulsePoint
+# PulsePoint v1
+
+> **You are reading the documentation for PulsePoint v1 (stable).**
+> [← Back to the project overview](../README.md) · [Switch to v2 →](../v2/README.md)
 
 The backend-agnostic reactive engine. Keep your HTML, add fine-grained reactivity with a tiny runtime.
 
+- **Runtime file:** [`pp-reactive-v1.js`](./pp-reactive-v1.js)
+- **Type definitions:** [`types/`](./types)
+- **AI execution rules:** [`pulse-point-ai-aware-rules.md`](./pulse-point-ai-aware-rules.md)
 - **Official site:** [https://pulsepoint.tsnc.tech/](https://pulsepoint.tsnc.tech/)
 - **Documentation:** [https://pulsepoint.tsnc.tech/docs](https://pulsepoint.tsnc.tech/docs)
+
+> Starting a new project? Prefer [v2](../v2/README.md) — it is the actively developed line.
+> v1 remains supported for existing applications.
 
 ---
 
@@ -173,7 +182,7 @@ For details and live examples, see the official docs:
 
 ---
 
-## Roadmap & Status
+## Roadmap & Status (v1)
 
 - ✅ v1.0 – Production ready core runtime.
 - ✅ Browser-resident state and effects (`pp.state`, `pp.effect`).
@@ -185,6 +194,8 @@ For details and live examples, see the official docs:
 Track progress and updates on the official site:
 
 - [https://pulsepoint.tsnc.tech/](https://pulsepoint.tsnc.tech/)
+
+New capabilities land in [v2](../v2/README.md); v1 receives fixes only.
 
 ---
 
@@ -200,7 +211,7 @@ If you are reading this on GitHub and the repository is public:
 - Submit pull requests for documentation improvements or small fixes.
 - Share examples of how you are using PulsePoint in your own stack.
 
-Please check the contribution guidelines (if present in the repository) before opening large PRs.
+Please read [CONTRIBUTING.md](../CONTRIBUTING.md) before opening large PRs.
 
 ### Professional support & JSX-style integrations
 
@@ -219,4 +230,4 @@ For consulting, implementation support, or tailored feedback, reach out via:
 
 ## License
 
-PulsePoint is open source software. License details will be provided in the repository’s `LICENSE` file.
+PulsePoint is released under the MIT License. See [LICENSE](../LICENSE) at the root of the repository.

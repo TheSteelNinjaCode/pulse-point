@@ -35,10 +35,14 @@ PulsePoint sits in the middle, and v2 pushes that middle much further:
 
 ---
 
-## Getting Started (CDN)
+## Getting Started
 
-The fastest way to try PulsePoint v2 is via the official CDN. Create an `index.html` file
-and paste the following:
+PulsePoint v2 ships as a single ES module. Import `ComponentInit` from it and call
+`bootstrap()` **exactly once** — that import is also what exposes the global `pp` object
+your component scripts use.
+
+Copy [`pp-reactive-v2.min.js`](./pp-reactive-v2.min.js) into your static assets directory
+(self-hosting is recommended for production), then:
 
 ```html
 <!DOCTYPE html>
@@ -48,35 +52,49 @@ and paste the following:
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PulsePoint App</title>
 
-    <!-- Import PulsePoint — it exposes a global `pp` and auto-mounts on DOMContentLoaded -->
-    <script type="module" src="https://cdn.tsnc.tech/pp-reactive-v2.min.js"></script>
+    <script type="module">
+      import { ComponentInit as PP } from "/js/pp-reactive-v2.min.js";
+
+      PP.bootstrap();
+    </script>
   </head>
 
-  <!-- Hidden until hydrated; the runtime reveals the body and restores the inline style -->
-  <body style="opacity: 0;">
-    <div pp-component="hello_1">
-      <h1>Hello {name}</h1>
-      <input value="{name}" oninput="setName(event.target.value)" />
+  <body>
+    <template pp-component="hello_1">
+      <div pp-component="hello_1">
+        <h1>Hello {name}</h1>
+        <input value="{name}" oninput="setName(event.target.value)" />
 
-      <script>
-        const [name, setName] = pp.state("World");
-      </script>
-    </div>
+        <script>
+          const [name, setName] = pp.state("World");
+        </script>
+      </div>
+    </template>
   </body>
 </html>
 ```
 
-### Self-hosted (recommended for production)
+The runtime has zero dependencies. Place the module script in `<head>` or at the end of
+`<body>` — module scripts are deferred, so your component templates already exist when
+`PP.bootstrap()` runs.
 
-Copy [`pp-reactive-v2.min.js`](./pp-reactive-v2.min.js) into your static assets directory
-and reference it from your base layout:
+To try it without downloading anything, point the import at the CDN instead:
 
 ```html
-<script type="module" src="/js/pp-reactive-v2.min.js"></script>
+<script type="module">
+  import { ComponentInit as PP } from "https://cdn.tsnc.tech/pp-reactive-v2.min.js";
+
+  PP.bootstrap();
+</script>
 ```
 
-The runtime has zero dependencies. Place the tag in `<head>` with `type="module"`, or at
-the end of `<body>`. `pp.mount()` is idempotent and safe to call manually.
+### Wrap reactive regions in a `<template pp-component>` boundary
+
+Put each hand-authored reactive region inside a `<template pp-component="id">` whose
+single root element carries the same id. The content stays inert until `PP.bootstrap()`
+materializes it, which prevents raw `{...}` bindings from flashing and stops component
+scripts from running before PulsePoint starts. See
+[Deferred component boundaries](#deferred-component-boundaries) for why this matters.
 
 ---
 
@@ -99,6 +117,10 @@ the end of `<body>`. `pp.mount()` is idempotent and safe to call manually.
   template scope, so `{count}` and `onclick="setCount(...)"` just work.
 - `{count}` and `disabled="{count >= 10}"` stay in sync automatically.
 - No compile step or framework-specific templating is required.
+
+The snippets in this README show component roots on their own for readability. When you
+hand-author a page, wrap each **outermost** root in its
+[`<template pp-component>` boundary](#deferred-component-boundaries).
 
 ---
 
@@ -344,25 +366,29 @@ backend stack:
 
 ### Integration checklist
 
-1. **Serve the runtime** from your static assets and add the `<script type="module">` tag to your base layout.
-2. **Render components**: wrap interactive regions in an element with a server-generated unique `pp-component` id, with the component `<script>` inside that root.
+1. **Serve and start the runtime**: copy `pp-reactive-v2.min.js` to your static assets, then import `ComponentInit` from it in a module script in your base layout and call `bootstrap()` exactly once.
+2. **Render deferred components**: wrap every interactive region in a `<template pp-component="unique_id">` boundary, with exactly one root element and the component's `<script>` inside it. The id is server-generated and unique per page. Your template engine's own interpolation must not collide with PulsePoint's braces.
 3. **Escape user data**: server-interpolated content must be HTML-escaped **and** must not leak live `{`/`}` into the DOM (encode them as `&#123;`/`&#125;`), or stored input like `{fetch(...)}` would execute as a template expression. This is the one security rule specific to PulsePoint. The same encoding avoids collisions with template engines that use braces.
 4. **Set the CSRF cookie** on page responses.
 5. **Handle RPC POSTs** with one middleware catching `X-PP-RPC: true`.
-6. **Optional**: SSE streaming, a `/__pulsepoint/ws` endpoint, `X-PP-Redirect`, and `<template pp-component>` deferral for flash-free first paint.
+6. **Optional**: SSE streaming, a `/__pulsepoint/ws` endpoint, and `X-PP-Redirect` for server-driven navigation.
 
-### Server-side deferral (recommended)
+### Deferred component boundaries
 
-Raw `{...}` placeholders in `src`, SVG geometry, form values or table text can be parsed
-by the browser before the runtime mounts. To make first paint flash-free, wrap each
-**outermost** component root in an inert template — the runtime materializes it during
-mount:
+Wrap each **outermost** component root in an inert `<template pp-component>` carrying the
+same id:
 
 ```html
 <template pp-component="counter_1">
   <div pp-component="counter_1">…</div>
 </template>
 ```
+
+`PP.bootstrap()` materializes every `template[pp-component]` into live DOM first, then
+scans for components. Without the wrapper, the browser parses and validates the region
+before PulsePoint starts: raw `{...}` placeholders in `src`, SVG geometry, form values or
+table text get evaluated as literal content, and component `<script>` blocks run outside
+component scope. With it, first paint is flash-free and nothing executes early.
 
 ---
 

@@ -36,10 +36,12 @@ server wire contract (RPC, streaming, CSRF, WebSockets, SPA navigation).
 **Use it for new projects.**
 
 ```html
-<script
-  type="module"
-  src="https://cdn.tsnc.tech/pp-reactive-v2.min.js"
-></script>
+<script type="module">
+  import { ComponentInit as PP }
+    from "/js/pp-reactive-v2.min.js";
+
+  PP.bootstrap();
+</script>
 ```
 
 📖 **[Read the v2 documentation →](./v2/README.md)**
@@ -74,17 +76,20 @@ lightweight component model. Supported, but feature-frozen.
 <summary><b>🚀 PulsePoint v2 at a glance</b></summary>
 
 ```html
-<div pp-component="counter_1">
-  <p>Count: {count}</p>
-  <button onclick="setCount(count + 1)">Increment</button>
+<template pp-component="counter_1">
+  <div pp-component="counter_1">
+    <p>Count: {count}</p>
+    <button onclick="setCount(count + 1)">Increment</button>
 
-  <script>
-    const [count, setCount] = pp.state(0);
-  </script>
-</div>
+    <script>
+      const [count, setCount] = pp.state(0);
+    </script>
+  </div>
+</template>
 ```
 
 - Reactivity is scoped to a component boundary (`pp-component="unique_id"`).
+- Regions are authored inside an inert `<template pp-component>` that `PP.bootstrap()` materializes, so nothing flashes or runs early.
 - The component's own `<script>` lives inside its root and is evaluated in component scope.
 - Hooks: `state`, `effect`, `layoutEffect`, `ref`, `memo`, `callback`, `reducer`, `context`,
   `portal`, `id`, `syncExternalStore`, `imperativeHandle`, `transition`, `deferredValue`,
@@ -160,8 +165,9 @@ New capabilities land in v2 only. v1 receives fixes.
 |---|---|---|
 | **Status** | Stable, feature-frozen | Current, actively developed |
 | **Runtime file** | [`pp-reactive-v1.js`](./v1/pp-reactive-v1.js) (~305 KB) | [`pp-reactive-v2.min.js`](./v2/pp-reactive-v2.min.js) (~287 KB, minified) |
-| **Setup** | `import { PP }` then `window.pp = new PP()` | Load the module; it exposes a global `pp` and auto-mounts |
+| **Setup** | `import { PP }` then `window.pp = new PP()` | `import { ComponentInit as PP }` then `PP.bootstrap()` once — the import also exposes the global `pp` |
 | **Component script** | `<script type="text/pp">` | A plain `<script>` inside the component root |
+| **Authoring shape** | Markup plus one script block per page | Each region wrapped in an inert `<template pp-component>` boundary, materialized at bootstrap |
 | **Component model** | Lightweight — `pp-component` with props, context, portals | Full — component boundaries, composition roots (`display: contents`), multi-root fragments (`<!--pp:id-->`), slot content via `<template pp-owner>` |
 | **Hooks** | `pp.state`, `pp.effect`, `pp.ref` | The v1 three plus `layoutEffect`, `memo`, `callback`, `reducer`, `context`, `portal`, `id`, `syncExternalStore`, `imperativeHandle`, `transition`, `deferredValue`, `optimistic`, `errorBoundary` |
 | **Directives** | `pp-for`, `pp-ref`, `pp-spread`, `pp-ignore` | `pp-for`, `pp-ref`, `pp-spread`, `pp-style`, `pp-owner`, `pp-ref-forward`, `defaultvalue` / `defaultchecked`, plus SPA attributes (`pp-spa`, `pp-scroll-key`, `pp-reset-scroll`, `pp-loading-content`, `pp-loading-url`) |
@@ -182,11 +188,13 @@ attributes are **always quoted**, and `pp-for` lives only on `<template>`.
 
 v2 is not a drop-in replacement. The moving parts, roughly in the order you will hit them:
 
-1. **Loading** – replace the `import { PP }` + `new PP()` block with a single
-   `<script type="module" src=".../pp-reactive-v2.min.js"></script>`. The runtime
-   auto-mounts on `DOMContentLoaded`; `pp.mount()` is idempotent if you need it manually.
+1. **Loading** – replace the `import { PP }` + `new PP()` block with
+   `import { ComponentInit as PP } from ".../pp-reactive-v2.min.js"` followed by a single
+   `PP.bootstrap()` call. That import is what exposes the global `pp`; module scripts are
+   deferred, so your templates already exist when bootstrap runs.
 2. **Component boundaries** – v2 requires an explicit `pp-component="unique_id"` around
-   each interactive region, generated server-side and unique per page.
+   each interactive region, generated server-side and unique per page, with the outermost
+   root wrapped in an inert `<template pp-component="unique_id">`.
 3. **Scripts** – `<script type="text/pp">` becomes a plain `<script>` placed **inside**
    the component root. Top-level `const`/`let`/`function` declarations are exported to
    template scope.

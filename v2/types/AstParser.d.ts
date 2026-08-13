@@ -10,8 +10,8 @@ export declare class AstParser {
     private static bindingsCache;
     private static loopVariableCache;
     private static readonly MAX_CACHE_SIZE;
-    private static pruneCache;
     static clearCaches(): void;
+    private static addPatternBindings;
     static extractStateBindings(scriptContent: string): string[];
     static extractUsedVariables(expression: string, ignoredGlobals: Set<string>): Set<string>;
     static isValidExpression(code: string): boolean;

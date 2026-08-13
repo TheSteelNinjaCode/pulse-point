@@ -8,9 +8,9 @@
 
 ## What PulsePoint is
 
-- One JavaScript file, loaded with a normal `<script>` tag. It exposes a global
-  `pp` object and auto-mounts on `DOMContentLoaded` (`pp.mount()` is idempotent
-  and safe to call manually).
+- One JavaScript ES module. For a standalone page, import `ComponentInit` and
+  call `PP.bootstrap()` exactly once after importing it. The import exposes the
+  global `pp` object used inside component scripts.
 - Components are regions of server-rendered HTML marked with a
   `pp-component="unique_id"` attribute. Each component may own one plain
   `<script>` inside its root; the runtime captures that script and evaluates it
@@ -27,15 +27,21 @@
 
 ```html
 <!-- Self-hosted (recommended): copy pp-reactive-v2.min.js into your static dir -->
-<script type="module" src="/js/pp-reactive-v2.min.js"></script>
+<script type="module">
+  import { ComponentInit as PP } from "/js/pp-reactive-v2.min.js";
+
+  PP.bootstrap();
+</script>
 ```
 
 Serve the file from any static path. The runtime has zero dependencies. Place
-the tag in `<head>` with `type="module"` or at the end of `<body>`.
+the module script in `<head>` or at the end of `<body>`. Module scripts are
+deferred, so the component templates exist when `PP.bootstrap()` runs.
 
-Optional flash-of-uncompiled-template prevention: render `<body>` with
-`style="opacity: 0"` — the runtime reveals the body after hydration and
-restores the inline style. Also consider server-side deferral (below).
+Put each hand-authored reactive region inside a `<template pp-component>`
+boundary (below). Its content stays inert until `PP.bootstrap()` materializes
+it, preventing raw bindings from flashing and component scripts from running
+before PulsePoint starts.
 
 ## Component model
 
@@ -373,12 +379,12 @@ scroll/history. Server duties for full SPA support:
 
 To integrate PulsePoint v2 into backend/framework X:
 
-1. **Serve the runtime**: copy `pp-reactive-v2.min.js` to your static assets,
-   add `<script type="module" src="/js/pp-reactive-v2.min.js"></script>` to
-   your base layout.
-2. **Render components**: in your template engine, wrap interactive regions in
-   an element with a server-generated unique `pp-component` id, and put the
-   component's `<script>` inside that root. Your template engine's own
+1. **Serve and start the runtime**: copy `pp-reactive-v2.min.js` to your static
+   assets, then import `ComponentInit` from it in a module script and call
+   `PP.bootstrap()` exactly once.
+2. **Render deferred components**: in your template engine, wrap every
+   interactive region in a `<template pp-component="unique_id">` boundary.
+   Put exactly one root element and the component's `<script>` inside it. Your template engine's own
    interpolation must NOT collide with PulsePoint's braces — if it uses `{}`
    too (e.g. some formats), emit literal braces for PulsePoint or HTML-encode
    server data braces as `&#123;`/`&#125;`.
@@ -392,8 +398,7 @@ To integrate PulsePoint v2 into backend/framework X:
    registry, filters payload keys against the function signature, returns JSON.
 6. **Optional**: SSE streaming for generator-style functions; a
    `/__pulsepoint/ws` WebSocket endpoint for named sockets; `X-PP-Redirect`
-   for server-driven navigation; `<template pp-component>` deferral for
-   flash-free first paint.
+   for server-driven navigation.
 
 ## Minimal reference implementation (pseudo-code)
 

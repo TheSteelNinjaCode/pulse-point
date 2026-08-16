@@ -14,7 +14,6 @@ type StateUpdater<T> = T | ((prev: T) => T);
 type StateSetter<T> = (val: StateUpdater<T>) => void;
 export declare class HooksSystem {
     private readonly stateUpdateScheduler;
-    private static strictDiagnostics;
     private static anonymousIdCounter;
     /**
      * How many errors one boundary absorbs before it stops catching. Without a
@@ -37,7 +36,6 @@ export declare class HooksSystem {
     private pendingSynchronousLayoutUpdate;
     private pendingUpdate;
     private hasScheduledRender;
-    private batchedUpdates;
     private portalRegistrations;
     private isRenderWindowOpen;
     private warnedHookOutsideRender;
@@ -46,8 +44,6 @@ export declare class HooksSystem {
     private committedHookTypes;
     private disposed;
     constructor(onStateChange: () => void, componentLabel?: string, stateUpdateScheduler?: StateUpdateScheduler);
-    static setStrictDiagnostics(enabled: boolean): void;
-    static getStrictDiagnostics(): boolean;
     loadState(savedHooks: any[]): void;
     getHooks(): any[];
     prepareRender(): void;
@@ -56,6 +52,8 @@ export declare class HooksSystem {
     private recordHook;
     private validateHookSignature;
     runLayoutEffects(): boolean;
+    /** Whether the last render queued any passive effects to run. */
+    hasPendingEffects(): boolean;
     runEffects(): void;
     private runEffectCleanup;
     private runEffectCallback;

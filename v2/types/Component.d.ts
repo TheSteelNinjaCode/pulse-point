@@ -1,5 +1,7 @@
+import { type DirectChildDerivation, type DirectPropsSchemaEntry } from "./ComponentBoundary.js";
+import { type PreparedRowPlan } from "./LoopRowCache.js";
 import { type ScopeBundle } from "./utils.js";
-type PerfPhaseName = "script" | "compile" | "template" | "domDiff" | "bindEvents" | "bindRefs" | "bootstrapNested" | "portals" | "restoreFocus" | "layoutEffects" | "effects" | "total";
+type PerfPhaseName = "script" | "compile" | "template" | "domDiff" | "bindEvents" | "bindRefs" | "bootstrapNested" | "portals" | "restoreFocus" | "layoutEffects" | "effects" | "ctor" | "ctorSerialize" | "ctorProps" | "ctorPipeline" | "destroy" | "total";
 type PerfSample = {
     count: number;
     totalMs: number;
@@ -8,6 +10,55 @@ type PerfSample = {
 type PerfComponentEntry = {
     renderCount: number;
     phases: Record<PerfPhaseName, PerfSample>;
+};
+/**
+ * Construction blueprints shared across structurally identical instances.
+ *
+ * A list or churned panel mounts many components whose initial markup is
+ * byte-identical (loop-cloned children, repeated cards). Deriving the raw
+ * template, splicing the script, and compiling the render/template functions
+ * are pure functions of that markup, so instances after the first reuse the
+ * result instead of re-deriving it. Restricted to subtrees with no owned
+ * templates anywhere: owned-content extraction resolves owner ids against the
+ * live registry, which is instance state.
+ */
+type PipelineBlueprint = {
+    rawTemplate: string;
+    scriptContent: string;
+    usesLoops: boolean;
+    hasBoundaryCall: boolean;
+    captureNeeds: number;
+    propsOnlyRuntime: boolean;
+    bodyPlan: PreparedBodyPlan | null;
+    renderFunction: Function;
+    /** Compiled template functions by scope-key signature. */
+    templateFns: Map<string, Function>;
+    /** Compiled body-plan value functions by scope-key signature. */
+    bodyValuesFns: Map<string, Function>;
+    /**
+     * Sorted scope-key shape shared by every instance, published by the first
+     * render. Valid only while the committed scope is exactly the shared render
+     * function's return object — no capture helpers, loop helpers, or boundary
+     * resolver installed (`captureNeeds === 0`, no loops, no boundary calls);
+     * the same compiled script always returns the same top-level binding shape.
+     */
+    scopeShape: {
+        sortedKeys: string[];
+        sortedKeySig: string;
+    } | null;
+};
+/**
+ * A component body plan with its slot bitmasks resolved once, plus a
+ * `PreparedRowPlan`-shaped view for `applyRowValuePatch` (which reads only
+ * `slots`; the plan has no key or boundary slots by construction).
+ */
+type PreparedBodyPlan = {
+    rootTag: string;
+    size: number;
+    fullMask: number;
+    slotBitsByValue: number[];
+    exprs: string[];
+    applyPlan: PreparedRowPlan;
 };
 export declare class Component {
     private static readonly MAX_SYNC_RERENDERS;
@@ -25,6 +76,14 @@ export declare class Component {
     private renderFunction;
     private renderPipelineInitialized;
     private templateFn;
+    private pipelineBlueprint;
+    /**
+     * Built on first need, like the DOM-side managers: a compile-proven
+     * props-only script (and a scriptless wrapper) can never reach a hook, an
+     * effect, a portal, or an error boundary of its own, so nothing here is
+     * observable for it. Invariant: null implies the component has recorded no
+     * hook state and owns no portal registrations or boundary error.
+     */
     private hooksSystem;
     private _eventManager;
     private latestScope;
@@ -47,8 +106,8 @@ export declare class Component {
     private __ppDefaultValueSeq;
     private __ppDefaultCheckedStore;
     private __ppDefaultCheckedSeq;
-    private readonly __ppLoopValueIds;
-    private readonly __ppLoopOwnerKey;
+    private __ppLoopValueIds;
+    private __ppLoopOwnerKey;
     private __ppLoopValueSeq;
     private _formControlManager;
     private passiveEffectsVersion;
@@ -57,6 +116,13 @@ export declare class Component {
     private ownedChildren;
     private lastRenderedHtml;
     private renderCount;
+    /**
+     * True from construction until the first state save when the bootstrap's
+     * identity mint proved this id had no instance and no saved state — the
+     * state-restore and preserve-prior-entry probes are no-ops for it. Never
+     * set for reclaimed, collided, or externally seeded ids.
+     */
+    private freshStateId;
     private _portalManager;
     private parentId;
     private initialChildrenHtml;
@@ -68,7 +134,7 @@ export declare class Component {
     private _focusManager;
     private _domMorpher;
     private _ownedTemplateManager;
-    private propBindingManager;
+    private _propBindingManager;
     private _nestedBoundaryManager;
     private _attributeSyncManager;
     private _lastRawScopeKeySig;
@@ -77,14 +143,25 @@ export declare class Component {
     private _lastSortedScopeKeySig;
     private _cachedHooksAPI;
     private _cachedRuntimeAPI;
-    private _propFnCache;
-    private _interpolationFnCache;
-    private _scopeEvalFnCache;
+    /** Per-instance context-provision dispatcher, allocated on first render. */
+    private _provisionDispatcher;
     private _refEvalFnCache;
     private hadNestedRuntimeStructures;
     private loopRowCache;
     private loopKeepResolved;
     private usesLoops;
+    /** Capture-helper families this template can reach; see computeCaptureNeeds. */
+    private captureNeeds;
+    /** Script was conservatively proven to observe no runtime member but props. */
+    private propsOnlyRuntime;
+    /** Direct-write body plan; see TemplateCompiler.compileComponentBodyPlan. */
+    private bodyPlan;
+    /** Previous render's body-plan values; null forces a full-slot write. */
+    private bodyPlanValues;
+    private bodyPlanValuesFn;
+    private bodyPlanDisabled;
+    /** The live own <script> element, removed by the body plan's mount commit. */
+    private liveOwnScriptEl;
     private boundaryContentCache;
     private boundaryKeepResolved;
     private forceChildBoundaryRefresh;
@@ -98,10 +175,26 @@ export declare class Component {
      */
     private morphingFromCommittedRender;
     private __ppLoopRowsFn;
+    /** Resolved live containers of this component's keyed loops, by loop id. */
+    private _loopContainers;
+    /**
+     * Rows patched by the fused value lane whose boundary props changed;
+     * their child components are refreshed after the template evaluation that
+     * recorded them, at the same point the two-phase patch path refreshed them.
+     */
+    private _patchedBoundaryRows;
+    /** Verified boundary roots adopted out-of-band during the current morph. */
     private __ppBoundaryHtmlFn;
     private static perfEnabled;
     private static perfStats;
-    constructor(element: HTMLElement | SVGElement);
+    constructor(element: HTMLElement | SVGElement, bootstrapParentBundle?: ScopeBundle);
+    /**
+     * Build the HooksSystem on first need, wiring the same state-change,
+     * error-delivery, and saved-state restore the constructor used to perform
+     * eagerly. Called before any render whose script can reach the full runtime;
+     * props-only and scriptless components never construct one.
+     */
+    private ensureHooksSystem;
     private get eventManager();
     private get refBindingManager();
     private get formControlManager();
@@ -110,6 +203,13 @@ export declare class Component {
     private get traversalManager();
     private get contextManager();
     private get ownedTemplateManager();
+    /**
+     * Built on first use: a schema-built direct row reads its props straight
+     * from the sidecar at mount, so most churned children never evaluate a prop
+     * expression at all and should not pay the manager plus its resolver
+     * closure per instance.
+     */
+    private get propBindingManager();
     private get nestedBoundaryManager();
     /**
      * Built on first use: a component that reuses its static server markup never
@@ -120,6 +220,14 @@ export declare class Component {
     /** Built on first use, for the same reason as `focusManager`. */
     private get domMorpher();
     private initializeRenderPipeline;
+    /**
+     * Loop and boundary machinery per template shape. Only loop-bearing
+     * templates generate a `__pp_loop_rows(...)` call, and every scope key costs
+     * a signature entry plus an argument on every render, so a component with no
+     * `pp-for` must not pay for the row cache it can never use — and likewise
+     * for the boundary content resolver.
+     */
+    private installLoopMachinery;
     private syncParentId;
     static setPerfEnabled(enabled: boolean): void;
     static getPerfEnabled(): boolean;
@@ -208,7 +316,24 @@ export declare class Component {
     private findOwnedSlotScript;
     private applyBoundaryBindings;
     private computePropsFromAttributes;
-    refreshPropsFromParent(forceRender?: boolean, parentBundle?: ScopeBundle): void;
+    /**
+     * Record the props schema of a direct-built row shape from this instance's
+     * REAL props run. Refused (null) whenever the boundary carries anything a
+     * per-sibling replay cannot represent: captured raw `{expr}` bindings (they
+     * evaluate in the parent scope per pass), literal-brace markers (their
+     * strip-and-exempt bookkeeping is per element), or a missing sidecar.
+     * Everything else is exact: sidecar-backed names replay the typed per-row
+     * value, and every other attribute is part of the shared prototype, so the
+     * value this run produced is the value every sibling's run would produce.
+     */
+    private recordDirectPropsSchema;
+    /**
+     * The element-child index path from this boundary root to its own script,
+     * recorded once per direct-built shape so structurally identical siblings
+     * skip the recursive own-script walk.
+     */
+    private deriveScriptPath;
+    refreshPropsFromParent(forceRender?: boolean, parentBundle?: ScopeBundle, parentScopeKnownUnused?: boolean): void;
     /**
      * Refresh this nested component's owned-template children from the parent's
      * latest render output.
@@ -227,12 +352,12 @@ export declare class Component {
     private createRenderFunction;
     private resolveCapturedRefValue;
     private resolvePlainRefValue;
-    private readonly __ppRefCaptureFn;
-    private readonly __ppSelectValueCaptureFn;
-    private readonly __ppCheckedValueCaptureFn;
-    private readonly __ppInputValueCaptureFn;
-    private readonly __ppContextTokenCaptureFn;
-    private readonly __ppContextValueCaptureFn;
+    private __ppRefCaptureFn;
+    private __ppSelectValueCaptureFn;
+    private __ppCheckedValueCaptureFn;
+    private __ppInputValueCaptureFn;
+    private __ppContextTokenCaptureFn;
+    private __ppContextValueCaptureFn;
     private createRefCaptureFunction;
     private createSelectValueCaptureFunction;
     private createCheckedValueCaptureFunction;
@@ -241,12 +366,11 @@ export declare class Component {
     private createContextValueCaptureFunction;
     private __ppContextLookupFn;
     private createContextLookupFunction;
-    private readonly __ppDefaultValueCaptureFn;
-    private readonly __ppDefaultCheckedCaptureFn;
+    private __ppDefaultValueCaptureFn;
+    private __ppDefaultCheckedCaptureFn;
     private createDefaultValueCaptureFunction;
     private createDefaultCheckedCaptureFunction;
-    private readonly __ppLoopCaptureFn;
-    private readonly __ppLoopReadFn;
+    private __ppLoopCaptureFn;
     private clearLoopValues;
     private createLoopCaptureFunction;
     private consumeContext;
@@ -268,7 +392,65 @@ export declare class Component {
     captureComponentError(error: unknown): boolean;
     private schedulePassiveEffects;
     private applyDomDiff;
-    private isInsideTrackedPortal;
+    /**
+     * Apply direct row patches to the live keyed nodes of this component's
+     * loops. Every target is verified — present in the container's key index and
+     * still parented there — before anything is written; a single failed
+     * verification aborts the whole pass and the caller falls back to a full
+     * re-render with patching disabled.
+     */
+    /**
+     * Commit a changed render by writing the body plan's changed values straight
+     * to the live DOM, skipping the parse + morph. Plan eligibility guarantees
+     * the body's entire dynamic surface is captured by the plan's slots, so a
+     * changed rendered string implies changed values and the direct writes
+     * produce the same DOM the morph would have. Any verification failure —
+     * a non-primitive value, a throwing expression (contained per-expression
+     * only by the string pipeline), a structure mismatch, or a change the plan
+     * cannot see — falls back to the normal `applyDomDiff` path, which remains
+     * the source of truth.
+     *
+     * At mount (`lastRenderedHtml === ""`) the live DOM is the materialized
+     * template: every slot is written (raw `{expr}` text and attributes become
+     * their evaluated values) and the neutralized own `<script>` element is
+     * removed, exactly as the first morph would have done.
+     */
+    /**
+     * Whether this render may try the body-plan commit BEFORE evaluating the
+     * template, committing the mount straight from values. Gated to shapes whose
+     * render pipeline touches nothing the skipped string would have fed: no
+     * capture helpers (their tokens mint during template evaluation), no loops
+     * or boundary-content calls (their emission bookkeeping lives in the
+     * compiled template), and no owned children (resolved on the string). Plan
+     * eligibility already excludes managed inputs, refs, providers, and nested
+     * boundaries from the body, so the sentinel's constant probe results are
+     * exact for these shapes.
+     */
+    private canAttemptStringlessMount;
+    private tryBodyPlanCommit;
+    private applyLoopPatches;
+    /**
+     * The key → row-node index of one keyed-loop container, built lazily and
+     * cached on the container; the keyed morph pass invalidates it whenever it
+     * restructures the container.
+     */
+    private ensureLoopKeyIndex;
+    /**
+     * The owning side of the fused value lane: resolve one loop's live container
+     * and key index so the cache can verify and write patch targets during
+     * template evaluation, record boundary-carrying rows for the targeted child
+     * refresh after the evaluation, and report an abandoned patch pass with this
+     * component's identity.
+     */
+    private createLoopValuePatchSink;
+    /**
+     * The live parent element of one keyed loop's rows, resolved from the first
+     * patch's key and cached per loop id. The candidate row must belong to this
+     * component's own surface — the walk to the component root must not cross a
+     * nested boundary — and ambiguity or a foreign (SVG) namespace falls back to
+     * the full render path.
+     */
+    private resolveLoopContainer;
     private isEffectManagedSurfaceElement;
     private collectEventElements;
     private hasEventAttributes;
@@ -287,6 +469,62 @@ export declare class Component {
     private materializeNestedBoundaryFormDefaults;
     forceUpdate(): void;
     private destroyNestedComponents;
+    destroy(): void;
+}
+/**
+ * The shared per-shape runtime behind flyweight rows: everything a mounted
+ * direct-built row needs that is identical across clones of one prototype,
+ * resolved once at admission. Immutable shape knowledge — nothing here is
+ * per-row state, so sharing it across lifecycles is not pooling.
+ */
+type FlyweightShape = {
+    derivation: DirectChildDerivation;
+    blueprint: PipelineBlueprint;
+    schema: DirectPropsSchemaEntry[];
+    childrenHtml: string;
+    scriptPath: number[] | null;
+    scopeKeys: string[];
+    plan: PreparedBodyPlan;
+    valuesFn: Function;
+    renderFunction: Function;
+};
+/**
+ * A mounted direct-built row behind one shared per-shape runtime. The row
+ * record answers every per-id registry contract a Component would (instance
+ * surface, parent link, truthy state entry, saved scope) while owning no
+ * managers, hooks, or event machinery — its shape admission proves none can
+ * ever be needed. Any row that leaves the envelope materializes into a real
+ * Component with no observable difference: hookless rows lose no state, the
+ * live DOM is current, and props recompute.
+ */
+export declare class FlyweightRow {
+    el: HTMLElement;
+    readonly id: string;
+    parentId: string | null;
+    props: Record<string, any>;
+    private readonly shape;
+    latestScope: Record<string, any> | null;
+    bodyPlanValues: any[] | null;
+    renderCount: number;
+    /**
+     * True once this row was replaced by a real Component. The replacement's
+     * registerInstance destroys this record while its element is normally still
+     * connected, but a handed-over row must never park even when it is not —
+     * the element now belongs to the Component's render, not the row's plan.
+     */
+    handedOver: boolean;
+    /** Shared-blueprint identity, mirroring Component.pipelineBlueprint. */
+    readonly pipelineBlueprint: PipelineBlueprint;
+    constructor(el: HTMLElement, id: string, parentId: string | null, props: Record<string, any>, shape: FlyweightShape);
+    /** No HooksSystem, so no error boundary — errors keep walking up. */
+    captureComponentError(): boolean;
+    refreshPropsFromParent(forceRender?: boolean, parentBundle?: ScopeBundle): void;
+    /**
+     * Hand this row over to a real Component; its registerInstance replaces —
+     * and thereby destroys — this row, then rewrites exactly the registry
+     * entries the row maintained.
+     */
+    private materialize;
     destroy(): void;
 }
 export {};

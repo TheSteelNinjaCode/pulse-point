@@ -62,7 +62,6 @@ export declare class BoundaryContentCache {
      * of what is mounted no longer matches the DOM.
      */
     disable(): void;
-    isEnabled(): boolean;
     /**
      * Returns the markup to emit for one masked boundary: its stub when the
      * boundary is known to be mounted from the previous committed render, and its

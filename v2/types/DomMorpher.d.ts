@@ -21,8 +21,7 @@ export type DomMorpherOptions = {
     hasKeepPlaceholders?: () => boolean;
     collectEventElements: (element: Element) => void;
     hasEventAttributes: (element: Element) => boolean;
-    isInsideTrackedPortal: (element: Element) => boolean;
-    syncAttributes: (target: Element, source: Element, skipEffectAttrs?: boolean, preserveComponentId?: boolean) => void;
+    syncAttributes: (target: Element, source: Element) => void;
     syncNestedBoundaryAttributes: (target: Element, source: Element) => boolean;
     /**
      * Whether this render is the owner's recovery from a failed content reuse.
@@ -41,10 +40,30 @@ export type DomMorpherOptions = {
      * would leave the handler unbound forever.
      */
     canSkipEqualSubtrees?: () => boolean;
+    /**
+     * Consume detached rows for a verified first-render loop marker. Null means
+     * this is an ordinary keep-run marker from a later render.
+     */
+    takeDirectBuild?: (marker: Element) => Element[] | null;
+};
+/**
+ * A keyed-loop container carrying its lazily built key → row-node index, used
+ * by the direct row-patch path to find a patch target without walking the
+ * whole child list. The keyed morph pass invalidates it whenever it
+ * restructures the container.
+ */
+export type LoopContainerElement = Element & {
+    __ppLoopKeyIndex?: Map<string, Element>;
 };
 export declare class DomMorpher {
     private readonly options;
     constructor(options: DomMorpherOptions);
+    /**
+     * Morph one patched loop row in place. Returns the node that now carries the
+     * row: the target itself in the common case, or its replacement when the row
+     * root's tag changed.
+     */
+    morphPatchedRow(container: Element, target: Element, source: Element): Element;
     morphChildren(target: Element, source: DocumentFragment | Element): void;
     private morphCompatibleElement;
     private hasKeyedDirectChildren;

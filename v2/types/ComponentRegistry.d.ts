@@ -5,23 +5,31 @@ export declare class ComponentRegistry {
     private static scopeVersions;
     private static scopeVersionCounter;
     private static topologyVersion;
+    private static topologyBatchDepth;
+    private static topologyBatchDirty;
     private static mergedScopeCache;
     private static instances;
     private static parents;
     private static childrenByParent;
-    private static templates;
     private static ownedTemplateData;
     private static contextValues;
     private static consumerContexts;
     private static contextConsumers;
+    private static bumpTopologyVersion;
+    /**
+     * Defer topology-version bumps until the matching `endTopologyBatch`. Map
+     * edits are never deferred. Callers must pair the two in try/finally: an
+     * unbalanced begin would defer every later bump forever and silently
+     * freeze the merged-scope memo's invalidation.
+     */
+    static beginTopologyBatch(): void;
+    static endTopologyBatch(): void;
     static saveState(componentId: string, hooks: any[]): void;
     static getState(componentId: string): any[] | undefined;
     static removeState(componentId: string): void;
     static saveScope(componentId: string, scope: Record<string, any>): void;
     static getScope(componentId: string): Record<string, any> | undefined;
-    static getRootAncestor(componentId: string | null): string | null;
     static resolveComponentId(componentId: string | null, relativeToId?: string | null): string | null;
-    static getResolvedScope(componentId: string | null, relativeToId?: string | null): Record<string, any> | undefined;
     /**
      * Live (unmemoized) ancestor merge. Event dispatch must observe in-place
      * mutations of a saved scope object, which the render-path memo below
@@ -37,7 +45,15 @@ export declare class ComponentRegistry {
     static saveParent(componentId: string, parentId: string | null): void;
     static getParent(componentId: string): string | null | undefined;
     static removeParent(componentId: string): void;
-    static getDescendantIds(componentId: string): string[];
+    /** Whether any id is registered as a direct child of `componentId`. */
+    static hasChildren(componentId: string): boolean;
+    /**
+     * Visit every descendant id in post-order (deepest first — the order the
+     * destroy sweeps rely on) without materializing the id array per pass. The
+     * callback may destroy the visited id: children sets are snapshotted per
+     * parent before descending, exactly as the array form observed them.
+     */
+    static forEachDescendant(componentId: string, callback: (descendantId: string) => void): void;
     static saveContextValues(componentId: string, values: Map<ContextToken<any>, any>): ContextToken<any>[];
     static resolveContext<T>(startComponentId: string | null, context: ContextToken<T>): {
         providerId: string | null;
@@ -45,10 +61,7 @@ export declare class ComponentRegistry {
     };
     static updateContextDependencies(componentId: string, contexts: Iterable<ContextToken<any>>): void;
     static getConsumersForContextsInSubtree(componentId: string, contexts: Iterable<ContextToken<any>>): Set<string>;
-    static removeContextTracking(componentId: string): Set<string>;
-    static saveTemplate(componentId: string, template: string): void;
-    static getTemplate(componentId: string): string | undefined;
-    static removeTemplate(componentId: string): void;
+    static removeContextTracking(componentId: string): Set<string> | null;
     static saveOwnedTemplates(componentId: string, data: Map<string, {
         ownerId: string;
         content: string;
@@ -62,16 +75,6 @@ export declare class ComponentRegistry {
     static removeOwnedTemplates(componentId: string): void;
     static clear(): void;
     static destroyAll(): void;
-    static getStats(): {
-        states: number;
-        scopes: number;
-        instances: number;
-        parents: number;
-        templates: number;
-        ownedData: number;
-        contextValues: number;
-        contextConsumers: number;
-    };
     private static addContextConsumer;
     private static removeContextConsumer;
     private static isAncestor;

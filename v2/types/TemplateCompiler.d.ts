@@ -1,4 +1,77 @@
 /**
+ * One dynamic surface of a compiled loop-row plan (see `compileLoopRowPlan`).
+ *
+ * `p` is the element path from the row root as child-element indices. Slot
+ * kinds mirror the three serialization branches the string pipeline applies:
+ * a full `{expr}` binding on a boolean attribute, a full binding on a normal
+ * attribute, and a text/mixed-attribute value interpolated segment-wise with
+ * `__pp_render_value` semantics.
+ */
+export type RowPlanSlot = {
+    kind: "attr";
+    p: number[];
+    name: string;
+    bool: boolean;
+    v: number;
+} | {
+    kind: "attrParts";
+    p: number[];
+    name: string;
+    parts: (string | number)[];
+} | {
+    kind: "text";
+    p: number[];
+    parts: (string | number)[];
+}
+/**
+ * A bound attribute on a nested component boundary, serialized with the
+ * boundary-binding semantics (booleans toggle presence, nullish removes,
+ * primitives keep their string value). A change here also refreshes the
+ * boundary's component.
+ */
+ | {
+    kind: "battr";
+    p: number[];
+    name: string;
+    v: number;
+};
+/**
+ * Compile-time description of a keyed loop row whose dynamic surfaces are all
+ * plain attribute/text bindings. When present, the loop can evaluate the row's
+ * expressions directly and patch the live keyed node without rebuilding its
+ * HTML string or re-parsing it; see LoopRowCache's value lane.
+ */
+export type RowPlanDescriptor = {
+    /** Index into the values array of the root `key` binding. */
+    key: number;
+    slots: RowPlanSlot[];
+    /** Number of dynamic expressions the values function returns. */
+    size: number;
+    /**
+     * Static row prototype used by the verified direct-construction mount lane.
+     * Every dynamic surface in this markup is overwritten from `slots` before
+     * the clone can reach live DOM.
+     */
+    prototypeHtml?: string;
+    /** HTML parsing context for table/select-sensitive row roots. */
+    contextTag?: string;
+    /** Set when any slot targets a nested boundary's attribute. */
+    hasBoundary?: 1;
+    /** Set only when the row's single root is itself the component boundary. */
+    rootBoundary?: 1;
+};
+/**
+ * Compile-time description of a component body whose dynamic surfaces are all
+ * plain attribute/text bindings under one element root. `rootTag` is the
+ * root's `tagName` (uppercase for HTML), compared against the live body root
+ * before any write. See `TemplateCompiler.compileComponentBodyPlan`.
+ */
+export type ComponentBodyPlan = {
+    rootTag: string;
+    slots: RowPlanSlot[];
+    size: number;
+};
+/**
  * Chooses the markup emitted for one masked component boundary: its full
  * markup, or the empty stub when the owning component knows the child is
  * already mounted. Supplied per render through the `__pp_boundary_html` scope
@@ -54,29 +127,17 @@ export declare class TemplateCompiler {
      * Scope-free runtime helpers, built once and passed into every compiled
      * render function as its first argument. Embedding their source in each
      * function body made `new Function` re-parse the same ~2.5KB of helper code
-     * for every unique template, and the direct `eval` inside the
-     * dynamic-component helper forced the engine to deoptimize every render
-     * function whether or not the template used a dynamic component. Only the
-     * eval-dependent dynamic-component block still ships as source (see
-     * `getDynamicComponentHelperSource`), and only for templates that render one.
+     * for every unique template, so they are shared instead; no compiled render
+     * function contains a direct `eval`.
      */
     private static readonly SHARED_RENDER_HELPERS;
     private static readonly SHARED_HELPER_PRELUDE;
-    /**
-     * Source for the dynamic-component helpers. These stay embedded because
-     * `__pp_interpolate_dynamic_html` relies on direct `eval` resolving against
-     * the compiled function's own parameters (the component scope); a shared
-     * module function could never see those bindings.
-     */
-    private static getDynamicComponentHelperSource;
     private static escapeTemplateLiteralTextPreservingInterpolations;
     static clearCache(): void;
     private static maskEscapedBraceEntities;
     private static transformSpreadAttributes;
     private static expandSpreadPlaceholders;
     private static transformRefAttributes;
-    private static readonly DOTTED_COMPONENT_TAG_PATTERN;
-    private static transformComponentTags;
     private static transformContextProviderTags;
     private static findOpeningTagEnd;
     private static findMatchingContextProviderClose;
@@ -165,6 +226,72 @@ export declare class TemplateCompiler {
     private static findMatchingToken;
     private static advanceScannerState;
     private static isEscaped;
+    /**
+     * Attempt to compile a keyed loop body into a row plan: the list of its
+     * dynamic attribute/text surfaces plus the expressions that feed them.
+     *
+     * Returns null whenever the body carries anything beyond plain elements with
+     * expression-driven attributes and text — event handlers, nested runtime
+     * structure, managed form controls, refs, compiler placeholders, comments —
+     * so everything else keeps the string pipeline untouched. The plan must
+     * reproduce the string pipeline's serialization byte-for-byte at the DOM
+     * level; every accepted shape maps onto exactly one of the three
+     * serialization branches the compiled template would have used.
+     */
+    private static compileLoopRowPlan;
+    /**
+     * Embed a row descriptor in generated JavaScript without letting braces from
+     * the restored prototype participate in the outer template compiler's brace
+     * scanner. JavaScript string escapes reconstruct the exact brace characters
+     * when the compiled function is created (including inside component script
+     * text, where HTML entities would remain literal).
+     */
+    private static serializeRowPlanDescriptor;
+    /**
+     * Shared walker behind the loop row plan and the component body plan: turn
+     * one element subtree whose dynamic surfaces are all plain attribute/text
+     * bindings into expression + slot lists. `keyed` selects the loop-row
+     * contract (a root `key` binding is captured as the key expression);
+     * without it, a dynamic root `key` disqualifies the plan instead.
+     */
+    private static buildElementPlan;
+    /**
+     * Compile-time plan for a component whose entire body is plain attribute and
+     * text bindings under a single element root: the component can then commit a
+     * re-render by evaluating the plan's expressions and writing only the
+     * changed slots to its live DOM, skipping the parse + morph entirely (and,
+     * at mount, skipping the first morph by writing every slot into the
+     * materialized template markup). See `Component.tryBodyPlanCommit`.
+     *
+     * The prefilter rejects — as a superset — everything the compile pipeline
+     * handles beyond plain bindings: scripts, styles, templates/loops, slots,
+     * managed form controls, literal-content elements, foreign namespaces,
+     * `pp-*` markers (boundaries, refs, directives, owned templates), context
+     * providers, comments, escaped-brace entities, and `&lt;`-style literal
+     * markup text that the string pipeline masks. A false rejection only means
+     * the component keeps the normal render path.
+     */
+    static compileComponentBodyPlan(rawTemplate: string): {
+        exprs: string[];
+        descriptor: ComponentBodyPlan;
+    } | null;
+    /**
+     * Whether a keyed loop body that contains nested component boundaries may
+     * still participate in row reuse and direct patching.
+     *
+     * A kept row is never visited by the morph or the bootstrap pass, so this is
+     * only sound when everything in the row the PARENT is responsible for lives
+     * on the boundary's opening tag (its props), which byte-identity covers:
+     *
+     * - No owned/slot templates anywhere: their content is compiled in the
+     *   owner's scope and must be re-baked per render.
+     * - No parent-owned ref captures (`pp-ref-owner`).
+     * - Outside nested boundaries: no context providers, no managed form
+     *   controls, no refs, no remaining templates, no comments (runtime
+     *   markers), and no compiler placeholders in text. Everything INSIDE a
+     *   nested boundary is the child component's own responsibility.
+     */
+    private static isBoundaryRowBodySafe;
     private static processStructuralDirectives;
     /**
      * True when a loop body renders exactly one root element per row, so one row

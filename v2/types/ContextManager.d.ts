@@ -22,5 +22,5 @@ export declare class ContextManager {
     replaceActiveProviderBoundaries(nextBoundaryIds: Set<string>): Set<string>;
     requestRefresh(): void;
     refreshConsumers(consumerIds: Iterable<string>): void;
-    destroy(): Set<string>;
+    destroy(): Set<string> | null;
 }

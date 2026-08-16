@@ -1,9 +1,10 @@
 export type TraversalCache = {
-    ownedElements: HTMLElement[];
     childBoundaries: HTMLElement[];
     managedInputs: HTMLElement[];
     refElements: HTMLElement[];
 };
+/** Stateless root/element probe; does not require a traversal cache manager. */
+export declare function hasNativeEventAttributes(el: Element): boolean;
 export declare class TraversalManager {
     private readonly getRoot;
     private readonly getPortalElements;
@@ -15,7 +16,6 @@ export declare class TraversalManager {
     getCache(): TraversalCache;
     collectManagedInputs(): HTMLElement[];
     collectEventElements(root: Element, target: Set<HTMLElement>): void;
-    hasEventAttributes(el: Element): boolean;
     isManagedEventElement(element: HTMLElement): boolean;
     private isElementOwnedByTree;
 }

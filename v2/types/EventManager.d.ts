@@ -6,7 +6,7 @@ export declare class EventManager {
     private handlerCache;
     private cachedRootElementCount;
     private static readonly LARGE_INPUT_RENDER_DEFER_THRESHOLD;
-    constructor(root: HTMLElement, scopeProvider: () => Record<string, any>, canBindElement?: (element: HTMLElement) => boolean);
+    constructor(root: HTMLElement, scopeProvider: () => Record<string, any>, canBindElement: (element: HTMLElement) => boolean);
     clearCache(): void;
     /**
      * Returns true when a normal one-to-one DOM event is already bound with the
@@ -18,8 +18,7 @@ export declare class EventManager {
     private static prepareHandler;
     invalidateElementCountCache(): void;
     private resolveEventOwnerScope;
-    bindEvents(eventElements?: Set<HTMLElement>): void;
-    private isRootOwnedElement;
+    bindEvents(eventElements: Set<HTMLElement>): void;
     private bindElementEvents;
     /**
      * Removes listeners that were bound from `on*` attributes which no longer
@@ -28,15 +27,10 @@ export declare class EventManager {
      */
     static unbindRemovedEventHandlers(target: Element, source: Element): void;
     private getNativeEventNames;
-    private isDateLikeInput;
-    static shouldDeferStateUpdatesForNativeInput(): boolean;
-    static enqueueDeferredNativeInputUpdate(callback: () => void): void;
-    static flushDeferredNativeInputUpdates(): void;
     private runWithNativeInputRenderPolicy;
     private shouldDeferNativeInputRender;
     private ensureDeferredNativeInputBlurFlush;
     private shouldPreserveNativeEdit;
-    private fallbackCollectEventElements;
     private executeHandler;
     private executeHandlerWithScope;
     private getCompiledHandler;

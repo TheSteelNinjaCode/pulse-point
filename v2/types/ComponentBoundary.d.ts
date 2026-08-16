@@ -17,6 +17,83 @@
  * `null`.
  */
 export declare const BOUNDARY_ATTR = "pp-component";
+/**
+ * Out-of-band exact prop values carried by directly constructed boundary
+ * rows. A Symbol keeps this runtime metadata distinct from authored element
+ * properties and from anything HTML serialization can preserve.
+ */
+export declare const BOUNDARY_DIRECT_PROPS: unique symbol;
+/**
+ * One entry of a shape's mount-time props schema: how one attribute (or
+ * sidecar-only prop) of a direct-built boundary row maps into `pp.props`.
+ * `direct` entries read the row's exact typed value from the
+ * `BOUNDARY_DIRECT_PROPS` sidecar; static entries share the value the first
+ * sibling's real `computePropsFromAttributes` run produced, which is identical
+ * across clones of one prototype (only sidecar-backed slots vary per row).
+ */
+export type DirectPropsSchemaEntry = {
+    /** Raw attribute/sidecar name, as it appears in the DOM (kebab-case). */
+    name: string;
+    /** The `pp.props` key the name maps to (kebab converted to camelCase). */
+    camel: string;
+    /** True: read the typed value from the direct-props sidecar per row. */
+    direct: boolean;
+    /** Shared value for non-sidecar attributes (always a primitive). */
+    staticValue?: any;
+};
+/**
+ * Shared derivation for directly constructed boundary rows of one compiled
+ * row shape. Every such row is cloned from the same compile-time prototype and
+ * its slot fills touch only the row root, so the boundary's serialized content
+ * is byte-identical across rows and across rebuilds. The first child instance
+ * of a shape performs the normal constructor derivation and publishes the
+ * results here; siblings and later churn cycles reuse them instead of
+ * re-serializing an identical subtree.
+ *
+ * `childHtml` stays null until a constructor proves the subtree is
+ * derivation-safe (no owned templates anywhere — extraction mutates the DOM
+ * per instance and resolves owner ids against live registry state).
+ *
+ * The remaining fields fuse the rest of the per-child mount discovery once the
+ * first sibling has proven the shape:
+ * - `mintKey` uniquely names this record so the nested bootstrap can mint a
+ *   child id from the row key instead of the ancestor-walk signature hash. A
+ *   fresh record gets a fresh key, so two loops sharing one child base id (or
+ *   two parents sharing one loop shape) can never collide.
+ * - `propsSchema` is recorded by the first sibling from its real props run and
+ *   stays null when the shape carries anything the schema cannot represent
+ *   (captured raw bindings or literal-brace markers).
+ * - `blueprint` is the resolved pipeline blueprint (opaque to this module),
+ *   letting siblings skip the html-string-keyed blueprint lookup.
+ * - `scriptPath` is the element-child index path from the boundary root to its
+ *   own `<script>`, valid for every clone of the prototype; consumers verify
+ *   the resolved element before trusting it.
+ * - `stringlessMounted` is set by the recorder after its own first render:
+ *   true only when that render committed through the stringless body-plan
+ *   lane, which is the proof consumers need that the shape's evaluated
+ *   values commit directly (see `Component.mountBoundary`).
+ * - `flyweight` caches the flyweight-row admission decision for the shape
+ *   (blueprint facts plus prototype-root facts, identical across clones):
+ *   null until the first consumer evaluates it, `false` when refused, and
+ *   the shape's shared flyweight runtime record (opaque to this module)
+ *   when admitted.
+ */
+export type DirectChildDerivation = {
+    childHtml: string | null;
+    hasScript: boolean;
+    mintKey: number;
+    propsSchema: DirectPropsSchemaEntry[] | null;
+    blueprint: unknown | null;
+    scriptPath: number[] | null;
+    stringlessMounted: boolean;
+    flyweight: unknown | null;
+};
+/**
+ * Carries a shape's `DirectChildDerivation` from the direct-build lane to the
+ * child `Component` constructor on the boundary root element. One-shot: the
+ * constructor consumes and deletes it.
+ */
+export declare const BOUNDARY_CHILD_DERIVATION: unique symbol;
 /** A CSS selector matching any element boundary. */
 export declare const BOUNDARY_SELECTOR = "[pp-component]";
 export type BoundaryElement = HTMLElement | SVGElement;
@@ -92,12 +169,6 @@ export interface ComponentBoundary {
     setId(id: string): void;
     /** The boundary's current content, serialized — the live template. */
     readContent(): string;
-    /**
-     * The parent node the boundary's content lives in. For an element
-     * boundary, the element itself; for a range, the parent the markers sit
-     * in. This is where subtree queries and traversals start.
-     */
-    readonly contentRoot: ParentNode & Node;
     /** The boundary that encloses this one, by DOM position. */
     parentBoundaryElement(): BoundaryElement | null;
 }
@@ -108,6 +179,5 @@ export declare class ElementBoundary implements ComponentBoundary {
     getId(): string | null;
     setId(id: string): void;
     readContent(): string;
-    get contentRoot(): ParentNode & Node;
     parentBoundaryElement(): BoundaryElement | null;
 }

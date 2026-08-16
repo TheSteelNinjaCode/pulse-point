@@ -2,11 +2,11 @@ import { type ScopeBundle } from "./utils.js";
 export type CachedFunctionResolver = (cache: Map<string, Function>, expr: string, keys: string[], keySig: string, maxSize: number) => Function;
 export declare class PropBindingManager {
     private readonly componentId;
-    private readonly interpolationCache;
-    private readonly scopeEvalCache;
-    private readonly propEvalCache;
     private readonly getCachedFunction;
-    constructor(componentId: string, interpolationCache: Map<string, Function>, scopeEvalCache: Map<string, Function>, propEvalCache: Map<string, Function>, getCachedFunction: CachedFunctionResolver);
+    private interpolationCache;
+    private scopeEvalCache;
+    private propEvalCache;
+    constructor(componentId: string, getCachedFunction: CachedFunctionResolver);
     interpolateAttrString(raw: string, scope: Record<string, any>, bundle?: ScopeBundle): string;
     /**
      * Commit a nested boundary's bound root attributes for one render.
@@ -32,4 +32,5 @@ export declare class PropBindingManager {
      */
     private resolveBoundaryAttributeValue;
     computePropsFromAttributes(el: Element, parentId: string | null, parentBundle?: ScopeBundle): Record<string, any>;
+    private evalPropExpression;
 }

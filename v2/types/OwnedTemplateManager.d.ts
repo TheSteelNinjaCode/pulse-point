@@ -57,7 +57,7 @@ export declare class OwnedTemplateManager {
     extractOwnedTemplates(root: Element, onOwnerTemplateSeen?: (ownerId: string) => void): Map<string, OwnedChild>;
     resolveOwnedChildren(html: string, ownedChildren: Map<string, OwnedChild>): string;
     private expandOwnedPlaceholders;
-    maskNestedOwnedTemplates(content: string, contextTag?: string | null): {
+    maskNestedOwnedTemplates(content: string, contextTag: string | null): {
         content: string;
         placeholders: Map<string, string>;
     };

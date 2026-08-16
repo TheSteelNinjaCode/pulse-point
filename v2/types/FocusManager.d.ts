@@ -7,11 +7,8 @@ export type FocusSnapshot = {
 export declare class FocusManager {
     private readonly getRoot;
     private readonly containsPortalElement;
-    private readonly collectManagedInputs;
-    private readonly isDateLikeInput;
-    constructor(getRoot: () => HTMLElement | SVGElement, containsPortalElement: (element: Element) => boolean, collectManagedInputs: () => HTMLElement[], isDateLikeInput: (element: HTMLInputElement) => boolean);
-    save(managedInputs?: HTMLElement[]): FocusSnapshot;
-    restore(snapshot: FocusSnapshot, managedInputs?: HTMLElement[]): void;
-    private isTextSelectionControl;
+    constructor(getRoot: () => HTMLElement | SVGElement, containsPortalElement: (element: Element) => boolean);
+    save(managedInputs: HTMLElement[]): FocusSnapshot;
+    restore(snapshot: FocusSnapshot, managedInputs: HTMLElement[]): void;
     private getTextSelectionState;
 }

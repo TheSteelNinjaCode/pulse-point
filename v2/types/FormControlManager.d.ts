@@ -40,10 +40,8 @@ export declare class FormControlManager {
     private registerResetHandler;
     private unregisterResetHandler;
     private normalizeDefaultCheckedValue;
-    isDateLikeInput(input: HTMLInputElement): boolean;
     private shouldDeferFocusedDateLikeInputValue;
     private shouldDeferActiveNativeTextInputValue;
-    private isTextSelectionControl;
     private deferFocusedControlledInputValue;
 }
 export {};

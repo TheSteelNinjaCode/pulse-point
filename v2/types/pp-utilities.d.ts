@@ -22,24 +22,25 @@ export declare class PPUtilities {
     private readonly PROGRAMMATIC_SCROLL_SETTLE_MS;
     private mounted;
     private suppressTrackedScrollPersistence;
-    private transitionLockCount;
     private pendingRevealFrame;
     private pendingTransitionUnlockFrame;
     private hydrationBodySnapshot;
-    private previousHistoryScrollRestoration;
+    previousHistoryScrollRestoration: History["scrollRestoration"] | null;
     private trackedScrollElements;
     private didInitialScrollDiscovery;
     private readonly SCROLL_KEY_ATTR;
     static readonly PUBLIC_METHODS: readonly ["createContext", "mount", "redirect", "rpc", "socket", "enablePerf", "disablePerf", "getPerfStats", "resetPerfStats"];
     private constructor();
     mount(): void;
+    /** Bound public methods, built once and copied into each component runtime. */
+    private boundPublicApi;
     createComponentRuntime<Props extends Record<string, any> = Record<string, any>>(hooks: ComponentHooksAPI<Props>): ComponentRuntime<Props>;
     createContext<T>(defaultValue: T): PPContext<T>;
     enablePerf(): void;
     disablePerf(): void;
     getPerfStats(): Record<string, {
         renderCount: number;
-        phases: Record<"script" | "template" | "compile" | "domDiff" | "bindEvents" | "bindRefs" | "bootstrapNested" | "portals" | "restoreFocus" | "layoutEffects" | "effects" | "total", {
+        phases: Record<"script" | "template" | "destroy" | "compile" | "domDiff" | "bindEvents" | "bindRefs" | "bootstrapNested" | "portals" | "restoreFocus" | "layoutEffects" | "effects" | "ctor" | "ctorSerialize" | "ctorProps" | "ctorPipeline" | "total", {
             count: number;
             totalMs: number;
             maxMs: number;
@@ -59,10 +60,8 @@ export declare class PPUtilities {
     private hideBodyForHydration;
     private scheduleHydrationReveal;
     private restoreBodyAccessibility;
-    static resetInstance(): void;
     static getInstance(): PPUtilities;
     private enableSPANavigation;
-    private disableSPANavigation;
     private handleLinkClick;
     private getNavigationTarget;
     private handleTrackedScroll;
@@ -70,7 +69,6 @@ export declare class PPUtilities {
     private navigateTo;
     private resetGlobalCaches;
     private getResetScrollConfig;
-    private getElementKeyFromElement;
     private handleScrollRestoration;
     private saveScrollPositions;
     private getElementKey;
@@ -83,12 +81,9 @@ export declare class PPUtilities {
     private persistCurrentHistoryScrollState;
     private getCurrentUrl;
     private teardownCurrentPageComponents;
-    private updatePageContentWithViewTransition;
     private dispatchNavigationEvent;
     private showLoadingTransition;
     private fetchPageContent;
-    private normalizeServerRedirectTarget;
-    private getRedirectUrlFromResponse;
     private updateBrowserHistory;
     private updatePageContent;
     private syncBodyAttributes;

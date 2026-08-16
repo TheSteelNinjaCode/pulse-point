@@ -18,7 +18,6 @@ export declare class RpcClient {
     private readonly redirect;
     private activeAbortController;
     constructor(redirect: RedirectHandler);
-    reset(): void;
     call<T = any>(functionName: string, data?: Record<string, any>, optionsOrAbort?: boolean | RpcOptions): Promise<T | void>;
     private getCsrfToken;
     private resolveUrl;

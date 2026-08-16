@@ -37,13 +37,5 @@ export type SocketHandle = {
 };
 export declare class SocketClient {
     private readonly active;
-    /**
-     * Close every socket this client opened.
-     *
-     * Called on teardown the way the rpc client's `reset()` aborts its calls:
-     * a socket held open by a page that no longer exists is a leak on both
-     * ends of the wire.
-     */
-    reset(): void;
     connect(functionName: string, args?: Record<string, any>, options?: SocketOptions): SocketHandle;
 }

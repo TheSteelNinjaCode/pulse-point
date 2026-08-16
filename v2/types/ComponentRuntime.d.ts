@@ -13,7 +13,14 @@ export interface PPContext<T = any> {
 }
 export type ContextToken<T = any> = PPContext<T>;
 type ContextProvisionDispatcher = <T>(context: ContextToken<T>, value: T) => void;
-export declare function withContextProvisionDispatcher<T>(dispatcher: ContextProvisionDispatcher, callback: () => T): T;
+/**
+ * Install a context-provision dispatcher for the duration of a component's
+ * script evaluation and return the previous one, which the caller MUST
+ * restore in a `finally`. The swap pair brackets the script call exactly as a
+ * closure-wrapping form would, including nested renders, without allocating
+ * per render.
+ */
+export declare function swapContextProvisionDispatcher(dispatcher: ContextProvisionDispatcher | null): ContextProvisionDispatcher | null;
 export declare function createContext<T>(defaultValue: T): PPContext<T>;
 type StateSetter<T> = (updater: T | ((prev: T) => T)) => void;
 export type StateHook = {

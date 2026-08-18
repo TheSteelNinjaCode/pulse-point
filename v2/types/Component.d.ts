@@ -444,10 +444,21 @@ export declare class Component {
      */
     private createLoopValuePatchSink;
     /**
+     * The elements a keyed row of this component can legitimately sit under: its
+     * root, plus every subtree it has portalled elsewhere in the document.
+     * `pp.portal(...)` relocates real DOM out of `this.el` — a viewport rendered
+     * into `document.body` is the common case — so scanning only the root finds
+     * no rows at all and abandons patching for a component that is perfectly
+     * patchable.
+     */
+    private loopSearchRoots;
+    /** Whether an element is still on this component's own surface. */
+    private ownsSurfaceElement;
+    /**
      * The live parent element of one keyed loop's rows, resolved from the first
      * patch's key and cached per loop id. The candidate row must belong to this
-     * component's own surface — the walk to the component root must not cross a
-     * nested boundary — and ambiguity or a foreign (SVG) namespace falls back to
+     * component's own surface — the walk to the owning search root must not cross
+     * a nested boundary — and ambiguity or a foreign (SVG) namespace falls back to
      * the full render path.
      */
     private resolveLoopContainer;

@@ -277,6 +277,29 @@ export declare class Component {
     /** True when any descendant element is a component boundary; stops at the first hit. */
     private subtreeHasComponentBoundary;
     /**
+     * Did THIS component compile the markup inside a live nested boundary, so
+     * that the first morph after mount has to install the compiled form?
+     *
+     * The parent side of `parentCompiledOurContent`. That one reads a string
+     * captured at construction and can therefore test the masking rule directly;
+     * this one is asked of a live element at morph time, where the same test is
+     * not available -- a child's own `<script>` is removed from the DOM by its
+     * mount commit, so "carries no script" turns true for a masked boundary the
+     * moment it mounts.
+     *
+     * The two markups answer it instead. A boundary the owner MASKED is restored
+     * verbatim, so the rendered body is byte-identical to the live one; a
+     * boundary the owner COMPILED renders to the evaluated form of what is still
+     * literal `{...}` text in the live copy. So: different bodies, and a brace
+     * left in the live one, means the compiled markup has nowhere else to come
+     * from. Byte-equal bodies mean there is nothing to install, whichever side
+     * owns them.
+     *
+     * Restricted to the first morph after mount, the only point at which the live
+     * subtree can still be the server's uncompiled markup.
+     */
+    private ownsBoundaryContent;
+    /**
      * Did the surrounding component compile this boundary's content, rather than
      * mask it and restore it verbatim?
      *

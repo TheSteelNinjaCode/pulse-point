@@ -30,6 +30,14 @@ export type DomMorpherOptions = {
      */
     shouldForceChildRefresh?: () => boolean;
     /**
+     * Whether the live boundary still holds uncompiled markup that the owner --
+     * not the child -- was responsible for compiling. True only on the first
+     * morph after mount, and only for a boundary the owner's compiler treated as
+     * its own markup. The morph never descends into a boundary, so the compiled
+     * form can only be installed wholesale.
+     */
+    ownsBoundaryContent?: (target: Element, source: Element) => boolean;
+    /**
      * Whether byte-equal element subtrees may be skipped wholesale this pass.
      * Only true when the live DOM is the COMMITTED output of a previous render:
      * bound event handlers have their attributes stripped from live elements, so

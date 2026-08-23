@@ -92,6 +92,15 @@ export declare class TemplateCompiler {
     private static readonly LITERAL_TEXT_LT_ENTITY_PATTERN;
     private static readonly INTERNAL_LOOP_NAMES;
     private static readonly SPREAD_BOOLEAN_ATTRS;
+    /**
+     * `(?<![\w-])` rather than `\b`: a word boundary sits between the hyphen and
+     * the `d` of `aria-disabled`, so `\b` matched *inside* hyphenated attributes
+     * whose last segment happens to name a boolean one — `aria-disabled`,
+     * `data-open`, `aria-selected`, `aria-checked`. The rewrite then began
+     * mid-name and left the prefix behind, so a falsy value produced an attribute
+     * literally called `aria-` and the real one vanished. Those attributes are
+     * string-valued and belong to `transformNonBooleanAttributeBooleans`.
+     */
     private static readonly DYNAMIC_BOOLEAN_ATTRIBUTE_PATTERN;
     private static escapeTemplateLiteralText;
     /**

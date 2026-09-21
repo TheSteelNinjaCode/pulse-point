@@ -72,14 +72,27 @@ export type RuntimeRpcOptions = {
 };
 export type RuntimeSocketOptions = {
     url?: string;
-    onOpen?: () => void;
+    onOpen?: (info: {
+        reconnected: boolean;
+    }) => void;
     onMessage?: (message: any) => void;
     onError?: (error: Error) => void;
     onClose?: (info: {
         code: number;
         reason: string;
         wasClean: boolean;
+        willReconnect: boolean;
     }) => void;
+    onReconnecting?: (info: {
+        attempt: number;
+        delay: number;
+    }) => void;
+    reconnect?: boolean;
+    reconnectDelay?: number;
+    reconnectDelayMax?: number;
+    maxReconnectAttempts?: number;
+    heartbeatInterval?: number;
+    heartbeatTimeout?: number;
 };
 export type RuntimeSocketHandle = {
     send: (value: any) => boolean;

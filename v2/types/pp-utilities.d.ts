@@ -86,6 +86,13 @@ export declare class PPUtilities {
     private fetchPageContent;
     private updateBrowserHistory;
     private updatePageContent;
+    /**
+     * Replace the server-managed metadata tags (description, canonical, robots,
+     * Open Graph, Twitter) after a same-document navigation. The server marks
+     * them `data-pp-meta`; everything else in <head> (stylesheets, scripts,
+     * charset, viewport) is left untouched.
+     */
+    private syncManagedHead;
     private syncBodyAttributes;
     private handleNavigationCompletion;
     private handleNavigationError;

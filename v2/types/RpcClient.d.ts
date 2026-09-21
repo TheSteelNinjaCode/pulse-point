@@ -14,6 +14,22 @@ export type RpcOptions = {
     onUploadComplete?: () => void;
 };
 export type RedirectHandler = (url: string) => Promise<void>;
+/**
+ * A failed `pp.rpc` call. `message` is the server's `error` text (unchanged
+ * from earlier releases); the rest carries what the server sent:
+ *
+ * - `status`: the HTTP status (401, 403, 422, 500, ...)
+ * - `errors`: field messages from a validation failure, `{ email: ["..."] }`
+ * - `requestId`: the correlation id to quote in a support request
+ * - `body`: the parsed JSON body, or null
+ */
+export declare class RpcError extends Error {
+    readonly status: number;
+    readonly errors: Record<string, string[]>;
+    readonly requestId: string | null;
+    readonly body: any;
+    constructor(message: string, status: number, body?: any);
+}
 export declare class RpcClient {
     private readonly redirect;
     private activeAbortController;

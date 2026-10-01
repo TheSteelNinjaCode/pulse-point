@@ -8,7 +8,7 @@ tiny runtime — now with a full component model, a React-style hooks surface, a
 documented server wire contract.
 
 - **Runtime file:** [`pp-reactive-v2.min.js`](./pp-reactive-v2.min.js)
-- **Type definitions:** [`types/`](./types)
+- **Type definitions:** [`types/`](./types) — see [`types/README.md`](./types/README.md) for entry points and usage
 - **AI implementation context:** [`pulsepoint.md`](./pulsepoint.md)
 - **Official site:** [https://pulsepoint.tsnc.tech/](https://pulsepoint.tsnc.tech/)
 - **Documentation:** [https://pulsepoint.tsnc.tech/docs](https://pulsepoint.tsnc.tech/docs)
@@ -88,6 +88,25 @@ To try it without downloading anything, point the import at the CDN instead:
 </script>
 ```
 
+### `PP.bootstrap()` or `pp.mount()`
+
+Call **one** of them, once per page:
+
+| Call | What it does | Use it when |
+|---|---|---|
+| `PP.bootstrap()` | Materializes deferred boundaries and mounts every component | A plain multi-page app; every link is a full page load |
+| `pp.mount()` | Hides the body while it hydrates (`opacity: 0`, `inert`, `aria-busy`), runs `bootstrap()`, reveals the page on the next frame, then turns on [SPA navigation](#spa-navigation) | You want same-origin links to navigate without a full reload |
+
+`pp.mount()` runs `bootstrap()` itself and is idempotent, so don't call both:
+
+```html
+<script type="module">
+  import "/js/pp-reactive-v2.min.js"; // registers the global `pp`
+
+  pp.mount();
+</script>
+```
+
 ### Wrap reactive regions in a `<template pp-component>` boundary
 
 Put each hand-authored reactive region inside a `<template pp-component="id">` whose
@@ -143,11 +162,44 @@ inside that root:
 ```
 
 The server generates the id (any scheme works: `counter_1`, `page_products`, a hash), and
-it must be unique per page. Nested components are just nested `pp-component` elements;
+it must be unique per page. A server that names boundaries per component **type**
+rather than per instance may give sibling instances under one parent the same id; the
+runtime derives a distinct instance id for each later sibling, so each keeps its own
+state and children.
+
+Nested components are just nested `pp-component` elements;
 attributes on a nested root become `pp.props` in its script (kebab-case arrives
 camelCased: `on-select` → `pp.props.onSelect`). A brace attribute (`items="{visible}"`)
 is evaluated in the parent's scope and keeps its real type; a literal server-rendered
 value arrives as a string.
+
+#### Handlers a component writes on its own root
+
+Because root attributes are props, a `{…}` binding on a component's root is evaluated in
+the **parent's** scope and cannot read the component's own state. Put such bindings on an
+element inside the root.
+
+Native `on*` handlers the component itself authored on its root are the exception. The
+server marks them by stamping `pp-event-owner` with the component's own id, and the
+runtime then runs them in the component's scope, as React does:
+
+```html
+<form pp-component="signup_1" pp-event-owner="signup_1" onsubmit="handleSubmit(event)">
+  <input name="email" />
+  <button>Sign up</button>
+
+  <script>
+    const handleSubmit = (event) => {
+      event.preventDefault();
+      pp.rpc("signup", Object.fromEntries(new FormData(event.currentTarget)));
+    };
+  </script>
+</form>
+```
+
+Without `pp-event-owner`, a handler on a nested root resolves in the parent's scope
+(that is how a parent passes `onclick="…"` to a child). For components with the same id
+that are siblings, each instance resolves `pp-event-owner` to itself.
 
 Three root shapes exist:
 
@@ -181,11 +233,16 @@ child's (React-children semantics):
 ```
 
 The alias `pp-owner="app"` refers to the page's root component instance. When the owner
-re-renders, its slot content re-renders with it.
+re-renders, its slot content re-renders with it. Slot content can be passed on unchanged
+through an intermediate component and still belongs to the component that wrote it.
+
+When a parent puts a `pp-ref` on a child component's root, the server adds
+`pp-ref-owner="<parent id>"` beside it. The ref is then captured into the parent's refs
+and not the child's.
 
 ### State & Effects
 
-- `pp.state(initialValue)` → `[value, setValue]` (the setter accepts a value or an updater function).
+- `pp.state(initialValue)` → `[value, setValue]` (the setter accepts a value or an updater function; pass a function as `initialValue` to compute it lazily on first render only).
 - `pp.effect(cb, deps?)` – runs after render; may return a synchronous cleanup.
 - `pp.layoutEffect(cb, deps?)` – runs before paint.
 - `pp.ref(initial?)` → `{ current }` – imperative handles and non-rendering values.
@@ -212,6 +269,8 @@ Inside an `on*` attribute the runtime injects `event`, plus the aliases `e`, `$e
 | `pp-for="item in items"` / `"(item, index) in items"` | **`<template>` only** | Keyed list rendering |
 | `key="{expr}"` | The repeated element inside `pp-for` | Keyed diffing identity |
 | `pp-ref="name"` / `pp-ref="{expr}"` | Elements and component roots | Imperative element access |
+| `pp-ref-owner="owner_id"` | A child component root carrying a call-site `pp-ref` (server-stamped) | Capture the ref in the parent's refs |
+| `pp-event-owner="own_id"` | A component root (server-stamped) | Run the root's own `on*` handlers in the component's scope |
 | `hidden="{!cond}"` | Any element | Conditional rendering |
 | `defaultvalue="{expr}"` (lowercase) | `<input>`, `<textarea>`, `<select>` | Seed an uncontrolled field once |
 | `defaultchecked="{expr}"` (lowercase) | checkbox / radio | Seed an uncontrolled check once |
@@ -226,6 +285,8 @@ Inside an `on*` attribute the runtime injects `event`, plus the aliases `e`, `$e
 | `pp-scroll-key="name"` | A scroll container | Stable scroll restoration identity |
 | `pp-loading-content="true"` | The region swapped during SPA navigation | Marks the navigation content region |
 | `pp-loading-url="/route"` | A loading-state element | Route-specific loading lookup |
+| `pp-loading-transition='{"fadeIn":"200ms","fadeOut":"150ms"}'` | Inside a loading-state element | Fade durations for that loading state (JSON) |
+| `data-pp-meta` | `<meta>` / `<link>` in `<head>` | Server-managed head tags replaced on SPA navigation |
 
 There is **no** `pp-if`, `pp-show`, `pp-else`, `pp-model`, `pp-bind`, `pp-class`,
 `pp-text`, `pp-html`, `pp-on` or `pp-key`. Conditionals are `hidden="{...}"`; two-way
@@ -252,6 +313,18 @@ switching.
 Keys must be stable (an id, never a random value). Rows are reconciled per row: a row
 whose markup is unchanged is reused, not re-parsed.
 
+`pp-for` also works inside `<svg>` (e.g. a `<template pp-for>` of `<circle>` or `<path>`
+elements), and keyed rows may themselves contain nested components.
+
+### URL attributes in deferred templates
+
+When a `<template pp-component>` boundary is materialized, the runtime parks `src`,
+`srcset`, `sizes`, `imagesrcset`, `imagesizes` and `poster` values that still contain
+`{…}` under a `pp-inert-` prefix until the first render writes the evaluated value. The
+browser therefore never requests a placeholder URL such as `/img/{user.id}.png`, and
+logs no "Dropped srcset candidate" warnings. This needs no setup, but it only works for
+markup inside a deferred boundary.
+
 ---
 
 ## Hooks Reference
@@ -260,19 +333,19 @@ All hooks live on the global `pp` object and are called from a component `<scrip
 
 | Hook | Returns | Purpose |
 |---|---|---|
-| `pp.state(initial)` | `[value, setValue]` | Reactive state |
+| `pp.state(initial \| () => initial)` | `[value, setValue]` | Reactive state (function = lazy initializer) |
 | `pp.effect(cb, deps?)` | – | Side effect after render (optional cleanup) |
 | `pp.layoutEffect(cb, deps?)` | – | Side effect before paint |
 | `pp.ref(initial?)` | `{ current }` | Mutable, non-rendering value or DOM handle |
 | `pp.memo(factory, deps)` | value | Memoized computation |
 | `pp.callback(fn, deps)` | fn | Stable function identity |
-| `pp.reducer(reducer, initialState)` | `[state, dispatch]` | Reducer state |
+| `pp.reducer(reducer, initialArg, init?)` | `[state, dispatch]` | Reducer state (`init(initialArg)` computes the initial state lazily) |
 | `pp.context(token)` | value | Read a context value |
 | `pp.portal(ref, target?)` | – | Render outside the tree (default target `document.body`) |
 | `pp.id()` | string | Stable DOM-safe unique id |
 | `pp.syncExternalStore(subscribe, getSnapshot)` | value | Subscribe to an external store |
-| `pp.imperativeHandle(ref, createHandle, deps?)` | – | Expose an imperative API through a ref |
-| `pp.transition()` | `[isPending, startTransition]` | Non-blocking updates |
+| `pp.imperativeHandle(ref, createHandle, deps?)` | – | Expose an imperative API through a ref object or a callback ref |
+| `pp.transition()` | `[isPending, startTransition]` | Pending flag for in-flight work; `startTransition` accepts a sync or `async` scope and keeps `isPending` true until it settles (renders stay synchronous — there is no concurrent scheduler) |
 | `pp.deferredValue(value, initial?)` | value | Deferred/low-priority value |
 | `pp.optimistic(passthrough, reducer?)` | `[optimisticState, addOptimistic]` | Optimistic UI |
 | `pp.errorBoundary()` | `[error, reset]` | Catch and recover from render errors |
@@ -319,8 +392,51 @@ per-route allow-list** (never `eval` a name), filter the payload against the fun
 declared parameters, and return JSON.
 
 - **Streaming:** respond with `Content-Type: text/event-stream`; the client consumes chunks through `options.onStream(chunk)`, then `onStreamComplete()`.
-- **Redirects:** respond with `X-PP-Redirect: /target` (or `Location`); the client navigates, SPA-aware. Cross-origin targets are ignored.
-- **Errors:** non-2xx rejects the promise; include `{"error": "message"}` for a useful message.
+- **Redirects:** respond with `X-PP-Redirect: /target` (or a `Location` header on a 3xx); the client navigates, SPA-aware, and the call resolves to `{ redirected: true, to }`. Cross-origin targets are ignored with a console warning.
+- **Errors:** non-2xx rejects the promise with an [`RpcError`](#rpcerror).
+
+The third argument is either `true` (shorthand for `{ abortPrevious: true }`) or an
+options object:
+
+| Option | Default | Purpose |
+|---|---|---|
+| `abortPrevious` | `false` | Cancel the previous in-flight call (also an open stream); the cancelled call resolves to `{ cancelled: true }` |
+| `url` | current route | Endpoint to POST to |
+| `csrfUrl` | the request URL | Where to GET the CSRF cookie if it is missing |
+| `credentials` | `same-origin`, or `include` for a cross-origin `url` | `fetch` credentials mode (`omit` also skips the CSRF fetch) |
+| `onStream(chunk)` / `onStreamComplete()` | – | Consume an SSE response |
+| `onStreamError(error)` | – | Handle a failure yourself; when set, the promise resolves instead of rejecting |
+| `onUploadProgress({ loaded, total, percent })` / `onUploadComplete()` | – | Upload progress for multipart (file) payloads |
+
+**Multipart ordering:** when a payload contains files, every non-file value is written
+before the first file, so a server that streams the upload can read the other arguments
+before it reaches the file. Keys keep their order within each group, and a `FileList`
+is appended under one name.
+
+#### `RpcError`
+
+A rejected `pp.rpc` call throws an `RpcError` (an `Error` subclass with
+`name === "RpcError"`):
+
+| Field | Contents |
+|---|---|
+| `message` | The server's `error` text (401 → `"Authentication required"`, 403 → `"Permission denied"`) |
+| `status` | The HTTP status (401, 403, 415, 422, 500, …) |
+| `errors` | Field messages from a validation failure, e.g. `{ email: ["Already taken"] }`; `{}` if none |
+| `requestId` | The body's `requestId` string, for support requests; `null` if absent |
+| `body` | The parsed JSON body, or `null` |
+
+```js
+try {
+  await pp.rpc("saveProfile", data);
+} catch (err) {
+  if (err.name === "RpcError" && err.status === 422) setFieldErrors(err.errors);
+  else throw err;
+}
+```
+
+A server error body therefore looks like:
+`{"error": "Validation failed", "errors": {"email": ["Already taken"]}, "requestId": "req_8f2c"}`.
 
 ### CSRF
 
@@ -336,11 +452,66 @@ responses and verify `X-CSRF-Token` against it on every RPC POST.
 JSON object (the arguments); every subsequent frame in either direction is one JSON value.
 A frame of exactly `{"error": "message"}` routes to `onError` and closes.
 
-Handlers: `onOpen()`, `onMessage(value)`, `onError(error)`, `onClose({ code, reason, wasClean })`.
-The returned handle exposes `send(value)` (buffers frames sent before open), `close(code?, reason?)`
-and `readyState`. Open in `pp.effect(..., [])`, keep the handle in `pp.ref(...)`, close it
-in the effect cleanup. Production servers must check `Origin` against an allow-list, cap
-connections, and bound message size and rate.
+Non-JSON text frames reach `onMessage` as plain strings.
+
+**Handlers and options** (the third argument):
+
+| Option | Default | Purpose |
+|---|---|---|
+| `onOpen({ reconnected })` | – | Every successful open; `reconnected` is `false` only the first time |
+| `onMessage(value)` | – | Each data frame |
+| `onError(error)` | – | Handshake refusals and `{"error": …}` frames |
+| `onClose({ code, reason, wasClean, willReconnect })` | – | Every closed connection, including one about to be replaced |
+| `onReconnecting({ attempt, delay })` | – | A reconnect is scheduled `delay` ms from now |
+| `reconnect` | `true` | Reopen after an unexpected close |
+| `reconnectDelay` / `reconnectDelayMax` | `1000` / `30000` | Exponential backoff (with jitter) bounds, in ms |
+| `maxReconnectAttempts` | `Infinity` | Give up after this many consecutive failures |
+| `heartbeatInterval` | `25000` | Ping period in ms; `0` disables the heartbeat |
+| `heartbeatTimeout` | `20000` | Treat the connection as dead if no frame arrives this long after a ping |
+| `url` | `/__pulsepoint/ws` | Endpoint override |
+
+**Staying connected.** An open connection sends `{"__pp": "ping"}` every
+`heartbeatInterval`, and **the server must answer `{"__pp": "pong"}`**. A connection
+that stays silent past `heartbeatTimeout` is replaced. Control frames (an object whose
+only key is `__pp`) never reach `onMessage`. After an unexpected close the handle
+reconnects with backoff and re-sends the arguments frame, so the server function runs
+again from the top. The browser's `online` event, or a hidden tab becoming visible,
+skips the backoff wait.
+
+It does **not** reconnect after `handle.close()`, after an `{"error": …}` frame, after a
+`1000` close (the server function returned), or after a policy close (`1003`, `1007`,
+`1008`, `1009`, `1010`). Frames sent while the connection was down are not replayed. If
+you need them, re-fetch in `onOpen` when `reconnected` is `true`.
+
+**The handle** exposes:
+
+- `send(value)`: queues one JSON value, buffering while connecting or reconnecting (up
+  to 256 frames). It returns `false` once the handle is closed for good or the buffer is
+  full.
+- `close(code?, reason?)`: closes for good, with no reconnect.
+- `readyState`: mirrors `WebSocket.readyState`, and is `CONNECTING` while waiting to
+  reconnect.
+
+```html
+<script>
+  const [messages, setMessages] = pp.state([]);
+  const socketRef = pp.ref(null);
+
+  pp.effect(() => {
+    const socket = pp.socket("chatRoom", { room: "general" }, {
+      onMessage: (msg) => setMessages((prev) => [...prev, msg]),
+      onOpen: ({ reconnected }) => reconnected && pp.rpc("history").then(setMessages),
+    });
+    socketRef.current = socket;
+    return () => socket.close();
+  }, []);
+
+  const send = (text) => socketRef.current?.send({ text });
+</script>
+```
+
+Production servers must check `Origin` against an allow-list, cap connections, and bound
+message size and rate.
 
 ### SPA navigation
 
@@ -349,6 +520,38 @@ marked `pp-loading-content="true"`, and manages scroll and history. Serve full H
 documents for every route; optionally send `X-PP-Root-Layout: <id>` (also emitted as
 `meta[name="pp-root-layout"]`) so the client can detect layout changes and fall back to a
 full load. Per-link `pp-spa="false"` opts out.
+
+What a navigation does:
+
+- **Request:** a `GET` with `X-PP-Navigation: true`, `X-PulsePoint-Wire: true`,
+  `X-Requested-With: XMLHttpRequest` and `Accept: text/html`. It times out after 15 s.
+  On a timeout, a non-2xx status or any other error, the client falls back to a full page
+  load.
+- **Redirects:** followed `fetch` redirects and `X-PP-Redirect` are both honoured.
+  Cross-origin targets fall back to a full load.
+- **Head:** `<title>` is updated. Every `<head>` element marked `data-pp-meta`
+  (description, canonical, robots, Open Graph, Twitter cards…) is replaced with the new
+  page's set. Everything else in `<head>` is left untouched.
+- **Body:** the new `<body>` attributes are copied (except `style`), the old page's
+  components are destroyed, and the new body is mounted.
+- **Events:** `pp:navigation:start`, `pp:navigation:complete` and `pp:navigation:error`
+  are dispatched on `document`, with `event.detail = { url }` (plus `error` on failure).
+
+```js
+document.addEventListener("pp:navigation:start", () => progressBar.show());
+document.addEventListener("pp:navigation:complete", (e) => analytics.page(e.detail.url));
+```
+
+- **Scroll:** positions are stored in history state per window and per scroll container
+  (`pp-scroll-key`), and restored on back/forward. `pp-reset-scroll="true"` on the new
+  page's `<body>` or a container resets it.
+- **Loading states:** loading templates are `div[pp-loading-url="/route"]` elements inside
+  a container with `id="loading-file-1B87E"`. The longest matching route prefix is used,
+  falling back to `/`. A child with `pp-loading-transition='{"fadeIn":"200ms","fadeOut":"150ms"}'`
+  sets the fade timing (default 250 ms; units `ms`, `s` or `m`).
+
+`pp.redirect(url)` uses the same machinery when SPA navigation is on, and does a normal
+`location` change otherwise or for cross-origin URLs.
 
 ---
 
@@ -371,7 +574,8 @@ backend stack:
 3. **Escape user data**: server-interpolated content must be HTML-escaped **and** must not leak live `{`/`}` into the DOM (encode them as `&#123;`/`&#125;`), or stored input like `{fetch(...)}` would execute as a template expression. This is the one security rule specific to PulsePoint. The same encoding avoids collisions with template engines that use braces.
 4. **Set the CSRF cookie** on page responses.
 5. **Handle RPC POSTs** with one middleware catching `X-PP-RPC: true`.
-6. **Optional**: SSE streaming, a `/__pulsepoint/ws` endpoint, and `X-PP-Redirect` for server-driven navigation.
+6. **Return structured errors**: `{"error": "…", "errors": {field: [...]}, "requestId": "…"}` with a non-2xx status, surfaced to the client as [`RpcError`](#rpcerror).
+7. **Optional**: SSE streaming; a `/__pulsepoint/ws` endpoint that answers `{"__pp":"ping"}` with `{"__pp":"pong"}`; `X-PP-Redirect` for server-driven navigation; `data-pp-meta` on per-page head tags; and `pp-event-owner` / `pp-ref-owner` stamps if your component compiler forwards call-site attributes onto component roots.
 
 ### Deferred component boundaries
 
@@ -441,7 +645,9 @@ component scope. With it, first paint is flash-free and nothing executes early.
 
 - The runtime logs `[PP-ERROR]` / `[PP-WARN]` prefixed messages to the console.
 - A blank component with no console error usually means invalid HTML in the template — most often an **unquoted** brace attribute (`class={expr}` instead of `class="{expr}"`).
-- `pp.enablePerf()` / `pp.getPerfStats()` expose render timings.
+- `pp.enablePerf()` / `pp.getPerfStats()` expose per-component render counts and per-phase timings (`count`, `totalMs`, `maxMs`); `pp.resetPerfStats()` clears them.
+- To profile the **initial mount** (which runs before you can type in the console), set `localStorage["pp-perf"] = "1"`, reload, then read `pp.getPerfStats()`.
+- A failed `pp.rpc` is an [`RpcError`](#rpcerror): log `err.status`, `err.errors` and `err.requestId`.
 
 ---
 
@@ -469,7 +675,11 @@ backend.
 - ✅ Component model with props, children, context, portals, composition roots, and fragments.
 - ✅ Full hooks surface (state, effect, layoutEffect, ref, memo, callback, reducer, transition, deferredValue, optimistic, errorBoundary, imperativeHandle, syncExternalStore, id).
 - ✅ Server wire contract: RPC, SSE streaming, CSRF, named WebSockets, server-driven redirects.
-- ✅ Optional SPA navigation with scroll and history management.
+- ✅ Structured RPC errors (`RpcError`) and upload progress for file payloads.
+- ✅ Self-healing sockets: heartbeat, automatic reconnect with backoff, send buffering.
+- ✅ Optional SPA navigation with scroll and history management, managed `<head>` tags and navigation events.
+- ✅ Event ownership for component roots (`pp-event-owner`) and same-id sibling instances.
+- ✅ Flash-free deferred templates, including inert `src`/`srcset` placeholders.
 - ✅ TypeScript-authored runtime with shipped `.d.ts` definitions.
 - 🚧 Ecosystem tooling, helpers, and framework-specific examples.
 

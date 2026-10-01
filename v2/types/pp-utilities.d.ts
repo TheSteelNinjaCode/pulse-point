@@ -40,7 +40,7 @@ export declare class PPUtilities {
     disablePerf(): void;
     getPerfStats(): Record<string, {
         renderCount: number;
-        phases: Record<"script" | "template" | "destroy" | "compile" | "domDiff" | "bindEvents" | "bindRefs" | "bootstrapNested" | "portals" | "restoreFocus" | "layoutEffects" | "effects" | "ctor" | "ctorSerialize" | "ctorProps" | "ctorPipeline" | "total", {
+        phases: Record<"bindEvents" | "bindRefs" | "bootstrapNested" | "compile" | "ctor" | "ctorPipeline" | "ctorProps" | "ctorSerialize" | "destroy" | "domDiff" | "effects" | "layoutEffects" | "portals" | "restoreFocus" | "script" | "template" | "total", {
             count: number;
             totalMs: number;
             maxMs: number;

@@ -370,7 +370,17 @@ export declare class Component {
      * boundary element so we can re-extract the owned templates and re-render when
      * their content actually changed.
      */
-    refreshOwnedChildrenFromElement(sourceEl: Element): boolean;
+    refreshOwnedChildrenFromElement(sourceEl: Element, rendererId: string): boolean;
+    /**
+     * A wrapper that hosts no slot itself but passes children on
+     * (`<x-panel><slot /></x-panel>`) holds them one boundary down. The parent's
+     * morph stops at this boundary, so the fresh markup is handed to each nested
+     * boundary in turn. Source and live boundaries pair by position: a wrapper's
+     * own markup fixes their order, while their ids differ (loop instances derive
+     * a distinct id from the source's).
+     */
+    private forwardOwnedChildrenToNested;
+    private refreshOwnOwnedChildren;
     private getCachedFunction;
     private createRenderFunction;
     private resolveCapturedRefValue;

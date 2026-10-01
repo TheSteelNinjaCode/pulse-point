@@ -61,6 +61,20 @@ export declare class OwnedTemplateManager {
         content: string;
         placeholders: Map<string, string>;
     };
+    /**
+     * Lift out the owned templates that sit in slot content itself rather than
+     * behind a nested boundary. They are children a component passed through to
+     * another one along with markup of its own:
+     *
+     *   Outer: <x-inner><h3>{title}</h3><slot /></x-inner>
+     *   -> <template pp-owner="outer"><h3>{title}</h3><template pp-owner="app">…</template></template>
+     *
+     * The inner template belongs to its own owner (the page), not to the slot's,
+     * so it is replaced by a comment marker and rendered separately in its
+     * owner's scope. Masked before the nested-boundary pass, so a template
+     * behind a nested boundary (which that boundary extracts) is not seen here.
+     */
+    private static liftPassThroughTemplates;
     materializeTemplateComponentBoundaries(root: DocumentFragment | Element): void;
     static materializeTemplateComponentBoundaries(root: DocumentFragment | Element): void;
     /**
@@ -74,6 +88,7 @@ export declare class OwnedTemplateManager {
      */
     private static restoreNestedTemplatePlaceholders;
     private renderOwnedContent;
+    private renderPassThroughChildren;
     private resolveOwnedTemplateOwner;
     private markOwnedBindings;
 }

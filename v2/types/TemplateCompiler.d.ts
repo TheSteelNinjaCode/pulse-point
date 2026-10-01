@@ -179,6 +179,15 @@ export declare class TemplateCompiler {
     private static expandEmbeddedBindingsInStringLiteral;
     private static stringifyEmbeddedBindingExpression;
     static compile(template: string, stateKeys: string[]): Function;
+    /**
+     * The node that stands in for a masked element. Normally text; inside table
+     * structure (`<tr>…<script></script></tr>`), where text is not allowed, a
+     * comment: a later parse of the loop body would foster-parent a text
+     * placeholder out of the row, and the row component's script would be
+     * restored next to the row instead of in it. The restore passes consume
+     * the comment delimiters with the key.
+     */
+    private static placeholderNode;
     private static maskLiteralElements;
     private static maskLiteralHtmlTextNodes;
     private static escapeLiteralCodeProcessingInstructionOpeners;

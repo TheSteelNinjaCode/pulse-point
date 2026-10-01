@@ -17,6 +17,16 @@ export declare class EventManager {
     private static normalizeHandlerCode;
     private static prepareHandler;
     invalidateElementCountCache(): void;
+    /**
+     * A boundary root whose `pp-event-owner` names its own boundary handles its
+     * own events (`<form pp-component="f" pp-event-owner="f" onsubmit=…>`): the
+     * owner is this element's instance. Servers that name boundaries per
+     * component type (Rahti) give same-type siblings one id, and the runtime
+     * derives a distinct one for each later sibling, so resolving the bare id
+     * would pick whichever instance holds it. Any other owner (slot content's)
+     * is left to ancestor resolution.
+     */
+    private static ownInstanceId;
     private resolveEventOwnerScope;
     bindEvents(eventElements: Set<HTMLElement>): void;
     private bindElementEvents;

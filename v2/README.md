@@ -30,6 +30,7 @@ PulsePoint sits in the middle, and v2 pushes that middle much further:
 - **Server-connected** – A documented wire contract: RPC over POST, SSE streaming, CSRF, named WebSockets, and server-driven redirects.
 - **Optional SPA navigation** – Same-origin link interception with scroll and history management, opt-out per link.
 - **Surgical DOM updates** – A DOM morpher reconciles only what changed. No virtual DOM.
+- **Native web APIs, no wrappers** – Component scripts are plain browser JavaScript, so WebGPU, Web Workers, WebAssembly, Web Audio, WebRTC and every other web API work directly, the day browsers ship them. See [Native JavaScript & Web APIs](#native-javascript--web-apis).
 - **Strongly typed** – The runtime is authored in TypeScript; `.d.ts` files ship in [`types/`](./types).
 - **Drop-in ready** – Keep your existing routing, auth, and ORM. Add PulsePoint only where you need interactivity.
 
@@ -361,6 +362,317 @@ or `memo()` wrapper.
 
 ---
 
+## Native JavaScript & Web APIs
+
+A component's `<script>` is ordinary JavaScript running in the page. It is not a sandbox
+and not a compile target. The runtime evaluates it in strict mode, as a function body
+that takes `pp`, in the page's own global scope. So everything the browser can do is
+available to it directly: WebGPU, Web Workers, WebAssembly, Web Audio, WebRTC and more.
+
+- **No wrapper layer.** `window`, `document` and `navigator` are the same objects any
+  script on the page sees. PulsePoint has no wrapper for any web API, and needs none.
+- **New APIs work the day browsers ship them.** PulsePoint never stands between your code
+  and the API, so it has nothing to add before you can call one.
+- **What you write is what runs.** No build step transforms the script, so DevTools
+  debugs it directly, breakpoints included.
+- **Markup stays plain HTML.** A `<canvas>`, `<video>` or `<audio>` is written as itself
+  and reached through `pp-ref`.
+
+### Who does what
+
+PulsePoint handles the data flow and the DOM, and the browser API does the heavy work.
+The two meet in a ref and an effect:
+
+| Job | Use | Why |
+|---|---|---|
+| Data from the server | `pp.rpc`, `pp.socket`, RPC streaming | Fetch, stream or push the values the API works on |
+| Values the markup shows | `pp.state` | Counts, labels, status. A change re-renders only the nodes that differ |
+| Handles to browser objects | `pp.ref` | GPU devices, contexts, workers, audio graphs, streams. Changing a ref never re-renders |
+| Acquire, feed and release | `pp.effect` | Create the object on mount, push new state into it, dispose of it in the cleanup |
+| The heavy work | The browser API | Shaders, threads, audio, codecs and hardware run at native speed. PulsePoint is not in that path |
+
+### WebGPU fed by `pp.rpc`
+
+The complete component below draws a bar chart with a WebGPU fragment shader:
+
+- Each click asks the server for a new series. The result lands in state, an effect
+  writes it to a GPU storage buffer, and the GPU redraws every bar.
+- The only markup that re-renders is the labels.
+- In a browser without WebGPU, the same effect draws with Canvas 2D instead.
+
+```html
+<template pp-component="gpu_chart">
+  <div pp-component="gpu_chart">
+    <p>Renderer: {backendLabel} · {series.length} values from the server</p>
+    <canvas pp-ref="{canvas}" style="display: block; width: 100%; height: 14rem"></canvas>
+
+    <input type="range" min="8" max="128" step="8"
+           value="{points}" oninput="setPoints(Number(event.target.value))" />
+    <button onclick="load()" disabled="{loading}">
+      {loading ? "Loading..." : "Fetch new data"}
+    </button>
+    <p hidden="{!error}">{error}</p>
+
+    <script>
+      const MAX_POINTS = 128;
+
+      const canvas = pp.ref(null);
+      const gpu = pp.ref(null);                 // device, buffers: a ref, never state
+      const [backend, setBackend] = pp.state("starting");
+      const [series, setSeries] = pp.state([]);
+      const [points, setPoints] = pp.state(48);
+      const [loading, setLoading] = pp.state(false);
+      const [error, setError] = pp.state("");
+
+      const backendLabel =
+        backend === "webgpu" ? "WebGPU"
+        : backend === "canvas2d" ? "Canvas 2D (no WebGPU in this browser)"
+        : "Starting...";
+
+      const SHADER = `
+        struct Params { count: f32, maxValue: f32, pad0: f32, pad1: f32 };
+        @group(0) @binding(0) var<uniform> params: Params;
+        @group(0) @binding(1) var<storage, read> values: array<f32>;
+
+        struct VertexOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+
+        @vertex fn vs(@builtin(vertex_index) i: u32) -> VertexOut {
+          var corners = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+          var out: VertexOut;
+          out.pos = vec4f(corners[i], 0.0, 1.0);
+          out.uv = (corners[i] + vec2f(1.0)) * 0.5;
+          return out;
+        }
+
+        @fragment fn fs(input: VertexOut) -> @location(0) vec4f {
+          let index = min(u32(input.uv.x * params.count), u32(params.count) - 1u);
+          let height = values[index] / params.maxValue;
+          let cell = fract(input.uv.x * params.count);
+          if (input.uv.y > height || cell < 0.12 || cell > 0.88) { return vec4f(0.0); }
+          let t = input.uv.y / max(height, 0.001);
+          return vec4f(mix(vec3f(0.11, 0.45, 0.85), vec3f(0.30, 0.85, 0.75), t), 1.0);
+        }
+      `;
+
+      function sizeCanvas(el) {
+        const ratio = window.devicePixelRatio || 1;
+        el.width = Math.max(1, Math.round(el.clientWidth * ratio));
+        el.height = Math.max(1, Math.round(el.clientHeight * ratio));
+      }
+
+      async function initGpu(el) {
+        if (!navigator.gpu) return null;
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) return null;
+        const device = await adapter.requestDevice();
+        const context = el.getContext("webgpu");
+        const format = navigator.gpu.getPreferredCanvasFormat();
+        context.configure({ device, format, alphaMode: "premultiplied" });
+
+        const module = device.createShaderModule({ code: SHADER });
+        const pipeline = device.createRenderPipeline({
+          layout: "auto",
+          vertex: { module, entryPoint: "vs" },
+          fragment: { module, entryPoint: "fs", targets: [{ format }] },
+          primitive: { topology: "triangle-list" },
+        });
+        const params = device.createBuffer({
+          size: 16,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const values = device.createBuffer({
+          size: MAX_POINTS * 4,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        const bindGroup = device.createBindGroup({
+          layout: pipeline.getBindGroupLayout(0),
+          entries: [
+            { binding: 0, resource: { buffer: params } },
+            { binding: 1, resource: { buffer: values } },
+          ],
+        });
+        return { device, context, pipeline, params, values, bindGroup };
+      }
+
+      function drawGpu(g, data) {
+        const padded = new Float32Array(MAX_POINTS);
+        padded.set(data.slice(0, MAX_POINTS));
+        g.device.queue.writeBuffer(g.values, 0, padded);
+        g.device.queue.writeBuffer(g.params, 0,
+          new Float32Array([data.length, Math.max(1, ...data), 0, 0]));
+
+        const encoder = g.device.createCommandEncoder();
+        const pass = encoder.beginRenderPass({
+          colorAttachments: [{
+            view: g.context.getCurrentTexture().createView(),
+            loadOp: "clear",
+            clearValue: { r: 0, g: 0, b: 0, a: 0 },
+            storeOp: "store",
+          }],
+        });
+        pass.setPipeline(g.pipeline);
+        pass.setBindGroup(0, g.bindGroup);
+        pass.draw(3);
+        pass.end();
+        g.device.queue.submit([encoder.finish()]);
+      }
+
+      function draw2d(el, data) {             // fallback without WebGPU
+        const ctx = el.getContext("2d");
+        ctx.clearRect(0, 0, el.width, el.height);
+        const max = Math.max(1, ...data);
+        const slot = el.width / data.length;
+        data.forEach((value, i) => {
+          const h = (value / max) * el.height;
+          ctx.fillStyle = "rgb(28, 115, 217)";
+          ctx.fillRect(i * slot + slot * 0.12, el.height - h, slot * 0.76, h);
+        });
+      }
+
+      // 1. Acquire the GPU once, release it on unmount.
+      pp.effect(() => {
+        let cancelled = false;
+        sizeCanvas(canvas.current);
+        initGpu(canvas.current)
+          .then((g) => {
+            if (cancelled) return g?.device.destroy();
+            gpu.current = g;
+            setBackend(g ? "webgpu" : "canvas2d");
+          })
+          .catch(() => !cancelled && setBackend("canvas2d"));
+        load();
+        return () => {
+          cancelled = true;
+          gpu.current?.device.destroy();
+          gpu.current = null;
+        };
+      }, []);
+
+      // 2. Every new series: upload to the GPU buffer and draw.
+      pp.effect(() => {
+        if (backend === "starting" || series.length === 0) return;
+        if (gpu.current) drawGpu(gpu.current, series);
+        else draw2d(canvas.current, series);
+      }, [series, backend]);
+
+      // 3. The server decides what to draw.
+      async function load() {
+        setLoading(true);
+        setError("");
+        try {
+          const { values } = await pp.rpc("gpu_series", { points });
+          setSeries(values);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+    </script>
+  </div>
+</template>
+```
+
+The server side is one RPC function, `gpu_series(points)`, that returns
+`{"values": [55.2, 71.8, …]}`. You can also render the first series straight into
+`pp.state(...)` and skip the initial fetch.
+
+### Rules
+
+1. **Browser objects go in `pp.ref`, not `pp.state`.** This covers GPU devices,
+   contexts, workers, audio contexts, streams and observers. State is for values the
+   markup shows. Storing a device there re-renders for no visible change.
+2. **Acquire in `pp.effect(..., [])` and release in its cleanup.** Cleanups are
+   synchronous, so start async setup inside the effect and guard it with a `cancelled`
+   flag, as above.
+3. **Push data into the API from a second effect** whose dependencies are the state it
+   reads. That is the reactive bridge: server data lands in state, and the effect
+   forwards it to the GPU, worker or audio graph.
+4. **Run per-frame work on `requestAnimationFrame`, with values in refs.** Calling a
+   state setter every frame re-renders the component 60 times a second. Set state only
+   when something on screen should change.
+5. **Feature-detect** (`if (!navigator.gpu) …`) and provide a fallback. WebGPU and most
+   device APIs require a secure context: HTTPS, or `localhost` in development.
+6. **No static `import`/`export` and no top-level `await`** in a component script,
+   because it runs as a function body. Use `import()` inside an effect or an async
+   function, or load the library with its own `<script type="module">`.
+
+### Animation loops
+
+A continuous animation belongs to the browser's frame loop, not PulsePoint's render
+cycle. State only starts and stops it:
+
+```js
+const frame = pp.ref(0);
+const [running, setRunning] = pp.state(true);
+
+pp.effect(() => {
+  if (!running) return;
+  let id = requestAnimationFrame(function tick(t) {
+    frame.current += 1;              // a ref: no re-render per frame
+    renderFrame(gpu.current, t);     // the GPU does the per-frame work
+    id = requestAnimationFrame(tick);
+  });
+  return () => cancelAnimationFrame(id);
+}, [running]);
+```
+
+### Workers: server → thread → DOM
+
+```js
+const worker = pp.ref(null);
+const [result, setResult] = pp.state(null);
+
+pp.effect(() => {
+  const w = new Worker("/js/parse-worker.js", { type: "module" });
+  w.onmessage = (event) => setResult(event.data);   // worker -> state -> DOM
+  worker.current = w;
+  return () => w.terminate();
+}, []);
+
+async function analyze() {
+  const file = await pp.rpc("exportCsv");            // server -> worker
+  worker.current.postMessage(file);
+}
+```
+
+### Third-party libraries
+
+Any library that runs in a browser runs in a component. Load it with `import()` inside
+an effect, give it the element from a ref, and destroy it in the cleanup:
+
+```js
+pp.effect(() => {
+  let cancelled = false;
+  let chart = null;
+  import("https://esm.sh/some-chart-library").then(({ Chart }) => {
+    if (cancelled) return;
+    chart = new Chart(host.current, { data: points });
+  });
+  return () => {
+    cancelled = true;
+    chart?.destroy();
+  };
+}, []);
+```
+
+### Other APIs, same pattern
+
+| API | Typical use | Release in the effect cleanup |
+|---|---|---|
+| WebGPU | GPU rendering and compute: charts, simulations, ML inference | `device.destroy()` |
+| Canvas 2D / WebGL | Drawing, charts, image processing | None for 2D; `WEBGL_lose_context` for WebGL |
+| Web Workers / OffscreenCanvas | Parsing, number crunching or rendering off the main thread | `worker.terminate()` |
+| WebAssembly | Native-speed modules compiled from Rust, C or Go | The module's own API |
+| Web Audio | Synthesis, effects, visualizers | `audioContext.close()` |
+| Media capture / WebRTC | Camera, microphone, screen share, calls | `track.stop()`, `peerConnection.close()` |
+| IndexedDB / Cache Storage | Offline data and assets | `db.close()` |
+| Intersection / Resize / Mutation observers | Lazy loading, measuring, reacting to layout | `observer.disconnect()` |
+| Web Serial / WebUSB / WebHID / Web Bluetooth | Talking to hardware from the page | `port.close()`, `device.close()` |
+| Clipboard, Notifications, File System Access, Geolocation | One-off actions | None; call them inside the event handler that has the user gesture |
+
+---
+
 ## Talking to Your Backend
 
 v2 adds a small, fully documented wire contract. Every piece is optional — a read-only
@@ -659,6 +971,7 @@ The full documentation is available on the official site. Key sections include:
 - **Core** – State, Effect, Ref, Loop, Spread
 - **Template & Mustache** – Text Interpolation, Attribute Binding, Event Handling, Two-Way Data Binding, Conditional Rendering
 - **Components** – Components, Props, Children, Composition Roots, Fragments, Context Management, Portals
+- **Native JavaScript & Web APIs** – WebGPU (live demo), Workers, animation loops, third-party libraries ([/docs/web-platform](https://pulsepoint.tsnc.tech/docs/web-platform))
 - **Server** – RPC, Streaming, CSRF, Sockets, SPA Navigation
 - **Examples** – Count, Todo List, Infinite Scroll, Paginate
 
@@ -680,6 +993,7 @@ backend.
 - ✅ Optional SPA navigation with scroll and history management, managed `<head>` tags and navigation events.
 - ✅ Event ownership for component roots (`pp-event-owner`) and same-id sibling instances.
 - ✅ Flash-free deferred templates, including inert `src`/`srcset` placeholders.
+- ✅ Native web APIs straight from component scripts: WebGPU, Workers, WebAssembly, Web Audio, WebRTC (documented pattern + live WebGPU demo).
 - ✅ TypeScript-authored runtime with shipped `.d.ts` definitions.
 - 🚧 Ecosystem tooling, helpers, and framework-specific examples.
 

@@ -22,6 +22,9 @@
   live server-side. The runtime talks back to the server over a small, fully
   documented wire contract (RPC over POST, optional SSE streaming, optional
   WebSockets).
+- Component scripts are native browser JavaScript, so every web API (WebGPU,
+  Workers, WebAssembly, Web Audio, WebRTC…) is used directly, without
+  wrappers. See "Native JavaScript and web APIs" below.
 
 ## Install
 
@@ -340,6 +343,82 @@ There is no `forwardRef` function (ref forwarding exists as the
 `pp-ref-forward="true"` attribute on a composition host — see Composition
 roots above), no `Suspense`, `lazy`, `useInsertionEffect`, `useActionState`
 or `memo()` wrapper. Do not generate them.
+
+## Native JavaScript and web APIs
+
+A component script is plain browser JavaScript. It is evaluated in strict mode,
+as a function body taking `pp`, in the page's global scope. Every web API is
+available directly: WebGPU (`navigator.gpu`), Canvas/WebGL, Web Workers,
+OffscreenCanvas, WebAssembly, Web Audio, WebRTC and media capture, IndexedDB,
+observers, and Web Serial/USB/HID/Bluetooth. There is no PulsePoint wrapper for
+any of them; do not invent one (no `pp.gpu`, `pp.worker`, `pp-canvas`…).
+
+The pattern: data from the server (`pp.rpc`, `pp.socket`, streaming) →
+`pp.state` (only values the markup shows) → `pp.effect` pushes it into the API,
+whose handle lives in `pp.ref`.
+
+```html
+<div pp-component="gpu_chart">
+  <canvas pp-ref="{canvas}"></canvas>
+  <p>{series.length} values</p>
+  <button onclick="load()">Refresh</button>
+  <script>
+    const canvas = pp.ref(null);
+    const gpu = pp.ref(null);                 // device/buffers: a ref, never state
+    const [series, setSeries] = pp.state([]);
+    const [ready, setReady] = pp.state(false);
+
+    pp.effect(() => {                         // acquire once, release on unmount
+      let cancelled = false;
+      initGpu(canvas.current).then((g) => {   // plain WebGPU setup
+        if (cancelled) return g?.device.destroy();
+        gpu.current = g;
+        setReady(true);
+      });
+      return () => { cancelled = true; gpu.current?.device.destroy(); };
+    }, []);
+
+    pp.effect(() => {                         // state change -> buffer upload + draw
+      if (ready) draw(gpu.current, series);
+    }, [series, ready]);
+
+    async function load() {
+      const { values } = await pp.rpc("gpu_series", { points: 64 });
+      setSeries(values);
+    }
+
+    // initGpu(): navigator.gpu.requestAdapter() -> adapter.requestDevice(),
+    // canvas.getContext("webgpu").configure({ device, format }), a pipeline,
+    // storage/uniform buffers and a bind group. Return null when
+    // navigator.gpu or the adapter is missing, and fall back to Canvas 2D.
+    // draw(): device.queue.writeBuffer(...), one render pass, queue.submit().
+  </script>
+</div>
+```
+
+Rules:
+
+- Browser objects (GPU devices, contexts, workers, audio contexts, streams,
+  observers) go in `pp.ref`. Release them in the effect cleanup:
+  `device.destroy()`, `worker.terminate()`, `audioContext.close()`,
+  `track.stop()`, `peerConnection.close()`, `observer.disconnect()`,
+  `db.close()`.
+- Effect cleanups are synchronous. Start async setup inside the effect and
+  guard it with a `cancelled` flag.
+- Push data into the API from a second effect whose dependencies are the state
+  it reads. That is the reactive bridge.
+- Run per-frame work on `requestAnimationFrame`, with values in refs. Never call
+  a state setter every frame. State only starts and stops the loop
+  (`pp.effect(() => { if (!running) return; …; return () => cancelAnimationFrame(id); }, [running])`).
+- Feature-detect (`if (!navigator.gpu)`) and provide a fallback. WebGPU and
+  device APIs need a secure context (HTTPS or localhost).
+- No static `import`/`export` and no top-level `await` in a component script.
+  Load libraries with `import()` inside an effect (give the library the element
+  from a ref, and destroy it in the cleanup), or with a separate
+  `<script type="module">`.
+- Gesture-gated APIs (Clipboard, Notifications, File System Access,
+  Geolocation, device pickers) are called inside the `on*` handler that has the
+  user gesture.
 
 ## The backend wire contract
 

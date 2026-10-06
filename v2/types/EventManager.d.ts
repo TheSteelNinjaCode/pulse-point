@@ -38,6 +38,15 @@ export declare class EventManager {
     static unbindRemovedEventHandlers(target: Element, source: Element): void;
     private getNativeEventNames;
     private runWithNativeInputRenderPolicy;
+    /**
+     * Whether pending deferred input renders are committed before this handler.
+     *
+     * Not for events that carry their control's own new value (`input`, `change`,
+     * the `blur` date-like `oninput` maps to, a checkbox or radio `click`): the
+     * browser has already changed the control, and committing a render first
+     * would write the stale controlled value back before the handler reads it.
+     */
+    private static flushesDeferredInputBefore;
     private shouldDeferNativeInputRender;
     private ensureDeferredNativeInputBlurFlush;
     private shouldPreserveNativeEdit;

@@ -28,6 +28,7 @@ export declare class FormControlManager {
     resolveDefaultCheckedBinding(input: DefaultCheckedElement, defaultCheckedStore: Map<string, any>): any;
     materializeNestedBoundaryFormDefaults(element: HTMLElement, stores: {
         inputValueStore: Map<string, any>;
+        selectValueStore: Map<string, any>;
         checkedValueStore: Map<string, any>;
         defaultValueStore: Map<string, any>;
         defaultCheckedStore: Map<string, any>;
